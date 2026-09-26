@@ -192,26 +192,52 @@
     });
 
     // ---- lapisan bentuk sel saraf ----
+    // Wadah yang menampung berkas skematis DAN berkas dari data asli, supaya
+    // keduanya bisa hidup berdampingan di bawah satu sakelar lapisan.
+    const gNeuron = new THREE.Group();
+    gNeuron.name = 'neuron';
+    gNeuron.visible = false;
+    model.root.add(gNeuron);
+
     const nx = NEURONS.build(model);
-    nx.group.visible = false;
-    model.root.add(nx.group);
+    gNeuron.add(nx.group);
     model.parts = model.parts.concat(nx.parts);
-    model.layerRoots.neuron = nx.group;
+    model.layerRoots.neuron = gNeuron;
     model.neuronSegments = nx.segments;
 
     NEURONS.loadReal('data/neurons.json', function (real) {
       if (!real) return;
-      model.root.remove(nx.group);
-      model.parts = model.parts.filter(p => p.userData.layer !== 'neuron').concat(real.parts);
-      real.group.visible = !!S.layers.neuron;
-      model.root.add(real.group);
-      model.layerRoots.neuron = real.group;
+
+      /* Berkas skematis TIDAK dibuang seluruhnya. Yang sudah ada padanannya
+         di data asli diganti; yang tidak ada dipertahankan.
+         Ini penting untuk akson fotoreseptor: FlyWire memindai OTAK saja,
+         retina berada di luar volumenya, jadi fotoreseptor memang tidak
+         akan pernah ada di data asli. Tanpa aturan ini, 780 serabut yang
+         ditarik dari posisi faset sungguhan akan lenyap begitu data asli
+         dimuat. */
+      const realIds = {};
+      real.parts.forEach(p => { realIds[p.userData.partId] = 1; });
+
+      const kept = [];
+      nx.parts.forEach(p => {
+        if (realIds[p.userData.partId]) nx.group.remove(p);
+        else kept.push(p);
+      });
+      if (!kept.length) gNeuron.remove(nx.group);
+
+      gNeuron.add(real.group);
+      model.parts = model.parts
+        .filter(p => p.userData.layer !== 'neuron')
+        .concat(kept, real.parts);
       model.neuronSegments = real.segments;
+
       reindex();
       buildPartList();
       buildLabels();
       applyLayers();
-      console.log('[neuron] skeleton FlyWire dimuat:', real.meta.source || '(tanpa keterangan)');
+      console.log('[neuron] skeleton FlyWire dimuat:', real.meta.source || '(tanpa keterangan)',
+                  '| berkas skematis dipertahankan:', kept.length
+                    ? kept.map(p => p.userData.partId).join(', ') : '(tidak ada)');
     });
 
     // indeks partId -> objek

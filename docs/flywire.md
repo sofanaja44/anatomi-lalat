@@ -266,6 +266,24 @@ jumlah neuron atau turunkan `--max-points`.
 
 Pemuatnya ada di `js/neurons.js` → `NEURONS.loadReal()`.
 
+### Akson fotoreseptor tetap skematis — dan memang seharusnya
+
+FlyWire memindai **otak saja**; retina berada di luar volume pindaiannya.
+Jadi akson fotoreseptor **tidak akan pernah ada** di data asli, berapa pun
+banyak neuron yang Anda ambil.
+
+Karena itu pemuatnya dirancang agar **berkas skematis yang tidak punya
+padanan di data asli tetap dipertahankan**. Saat `data/neurons.json` dimuat,
+konsol akan mencetak misalnya:
+
+```
+[neuron] skeleton FlyWire dimuat: ... | berkas skematis dipertahankan: nrn-fotoreseptor
+```
+
+Hasilnya: 780 serabut yang ditarik dari posisi faset sungguhan tetap terlihat,
+berdampingan dengan neuron FlyWire asli di dalam otak. Berkas skematis lain
+(khiasma, sel Kenyon, dst.) diganti data asli begitu tersedia.
+
 ---
 
 ## 7. Langkah berikutnya

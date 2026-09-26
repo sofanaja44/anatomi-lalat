@@ -1032,6 +1032,27 @@
         'Keluarannya langsung menuju neuron desenden pengendali terbang.'
       ]
     },
+
+    'nrn-optik-lain': {
+      nama: 'Neuron Lobus Optik Lainnya', latin: 'Neuroni lobi optici', grup: 'neuron', layer: 'neuron',
+      ukuran: ['77.541 di otak'],
+      ringkas: 'Kumpulan besar neuron lobus optik di luar berkas yang sudah dinamai sendiri: sel medula, sel proyeksi visual, dan sel sentrifugal yang membawa sinyal balik dari otak ke lobus optik.',
+      fakta: [
+        'Lobus optik memuat <b>77.541 neuron</b> — lebih dari separuh seluruh isi otak lalat, semata-mata untuk memproses penglihatan.',
+        'Termasuk di dalamnya neuron <b>LC</b> (lobula columnar) yang mengubah pemandangan langsung menjadi tindakan, misalnya refleks melompat saat ada bayangan membesar.',
+        'Sel sentrifugal mengalir ke arah sebaliknya — otak ikut mengatur cara matanya melihat.'
+      ]
+    },
+    'nrn-sentral-lain': {
+      nama: 'Neuron Otak Tengah Lainnya', latin: 'Neuroni cerebri centralis', grup: 'neuron', layer: 'neuron',
+      ukuran: ['32.383 di otak'],
+      ringkas: 'Neuron otak tengah di luar berkas yang sudah dinamai: penghubung antarwilayah, neuron modulator, dan sirkuit lokal yang menautkan penciuman, penglihatan, rasa, serta keadaan tubuh.',
+      fakta: [
+        'Otak tengah memuat <b>32.383 neuron</b> — di sinilah sebagian besar pengambilan keputusan terjadi.',
+        'Banyak di antaranya neuron modulator (dopamin, oktopamin, serotonin) yang mengubah cara sirkuit lain bekerja sesuai keadaan: lapar, kenyang, terancam, atau siap kawin.',
+        'Jenis sel yang belum sempat dinamai satu per satu pun tetap terekam utuh sambungannya di konektom.'
+      ]
+    },
   };
 
   /* --------- info umum spesies --------- */
