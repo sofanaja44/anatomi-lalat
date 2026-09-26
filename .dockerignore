@@ -1,0 +1,8 @@
+.git/
+.flywire-cache/
+neuropil_ply/
+*.parquet
+*.whl
+node_modules/
+__pycache__/
+*.pyc

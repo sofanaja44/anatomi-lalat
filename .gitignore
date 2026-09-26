@@ -1,0 +1,27 @@
+# --- keluaran & singgahan alat data ---
+.flywire-cache/
+neuropil_ply/
+*.parquet
+*.whl
+
+# Dihasilkan tools/fetch_flywire_skeletons.py. Ukurannya tidak menentu
+# (bisa puluhan MB), jadi tidak ikut di-commit. Tanpa berkas ini lapisan
+# "Sel saraf" otomatis memakai bentuk skematis — aplikasi tetap jalan.
+data/neurons.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

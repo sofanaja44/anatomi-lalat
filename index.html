@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Anatomi Lalat Buah 3D — Drosophila melanogaster</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ LOADER ============ -->
+<div id="loader">
+  <div class="ld-inner">
+    <svg class="ld-fly" viewBox="0 0 120 80" aria-hidden="true">
+      <ellipse cx="60" cy="46" rx="15" ry="9" class="ld-b"/>
+      <ellipse cx="42" cy="44" rx="11" ry="10" class="ld-b"/>
+      <circle cx="31" cy="41" r="7" class="ld-e"/>
+      <path d="M50 38 C 60 10, 100 8, 106 26 C 100 40, 66 42, 50 38 Z" class="ld-w"/>
+      <path d="M50 44 C 62 66, 100 70, 104 54 C 96 44, 66 44, 50 44 Z" class="ld-w"/>
+    </svg>
+    <div class="ld-title">DROSOPHILA&nbsp;MELANOGASTER</div>
+    <div class="ld-sub">membangun model anatomi 3D…</div>
+    <div class="ld-bar"><i></i></div>
+    <div class="ld-step" id="ldStep">inisialisasi</div>
+  </div>
+</div>
+
+<!-- ============ CANVAS + OVERLAY ============ -->
+<canvas id="scene"></canvas>
+<div id="labels"></div>
+<svg id="leaders" aria-hidden="true"></svg>
+<div id="tooltip"></div>
+
+<!-- skala -->
+<div id="scalebar"><div class="sb-line"><span></span></div><div class="sb-txt" id="sbTxt">1 mm</div></div>
+
+<!-- kompas orientasi -->
+<div id="axisgizmo"><canvas id="gizmoCanvas" width="110" height="110"></canvas></div>
+
+<!-- ============ TOP BAR ============ -->
+<header id="topbar">
+  <div class="tb-left">
+    <button class="icon-btn" id="btnSidebar" title="Daftar bagian (Tab)">☰</button>
+    <div class="brand">
+      <b>ANATOMI LALAT BUAH</b>
+      <i>Drosophila melanogaster · Meigen, 1830 · ♀</i>
+    </div>
+  </div>
+  <div class="tb-mid" id="viewPresets">
+    <button data-view="lateral" class="chip active">Lateral</button>
+    <button data-view="dorsal"  class="chip">Dorsal</button>
+    <button data-view="ventral" class="chip">Ventral</button>
+    <button data-view="anterior" class="chip">Anterior</button>
+    <button data-view="posterior" class="chip">Posterior</button>
+    <button data-view="head" class="chip">Kepala</button>
+    <button data-view="wing" class="chip">Sayap</button>
+    <button data-view="leg" class="chip">Tungkai</button>
+    <button data-view="otak" class="chip">Otak</button>
+  </div>
+  <div class="tb-right">
+    <button class="icon-btn" id="btnShot" title="Simpan gambar (P)">⤓</button>
+    <button class="icon-btn" id="btnHelp" title="Bantuan (H)">?</button>
+  </div>
+</header>
+
+<!-- ============ SIDEBAR: DAFTAR BAGIAN ============ -->
+<aside id="sidebar">
+  <div class="sb-head">
+    <input id="search" type="search" placeholder="Cari bagian… (mis. otak, halter, omatidium)" autocomplete="off">
+  </div>
+  <div class="sb-body" id="partList"></div>
+  <div class="sb-foot">
+    <span id="partCount">0 bagian</span>
+    <button id="btnResetSel" class="mini">bersihkan</button>
+  </div>
+</aside>
+
+<!-- ============ INSPECTOR ============ -->
+<aside id="inspector" class="hidden">
+  <button class="close" id="btnCloseInsp">×</button>
+  <div class="ins-tag" id="insGroup">—</div>
+  <h2 id="insName">—</h2>
+  <div class="ins-latin" id="insLatin">—</div>
+  <div class="ins-metrics" id="insMetrics"></div>
+  <p class="ins-desc" id="insDesc"></p>
+  <div class="ins-facts" id="insFacts"></div>
+  <div class="ins-actions">
+    <button id="btnIsolate" class="mini">Isolasi</button>
+    <button id="btnFocus" class="mini">Fokus kamera</button>
+  </div>
+</aside>
+
+<!-- ============ TOOLBAR BAWAH ============ -->
+<footer id="toolbar">
+
+  <div class="tool-group">
+    <span class="tg-title">Lapisan</span>
+    <div class="layers" id="layers">
+      <label class="lay"><input type="checkbox" data-layer="exo" checked><span>Eksoskeleton</span></label>
+      <label class="lay"><input type="checkbox" data-layer="wing" checked><span>Sayap</span></label>
+      <label class="lay"><input type="checkbox" data-layer="leg" checked><span>Tungkai</span></label>
+      <label class="lay"><input type="checkbox" data-layer="seta" checked><span>Setae</span></label>
+      <label class="lay"><input type="checkbox" data-layer="eye" checked><span>Omatidia</span></label>
+      <label class="lay"><input type="checkbox" data-layer="internal"><span>Organ dalam</span></label>
+      <label class="lay"><input type="checkbox" data-layer="muscle"><span>Otot terbang</span></label>
+      <label class="lay"><input type="checkbox" data-layer="trachea"><span>Trakea</span></label>
+      <label class="lay"><input type="checkbox" data-layer="nerve"><span>Saraf</span></label>
+      <label class="lay"><input type="checkbox" data-layer="connectome"><span>Neuropil otak</span></label>
+      <label class="lay"><input type="checkbox" data-layer="neuron"><span>Sel saraf</span></label>
+    </div>
+  </div>
+
+  <div class="tool-group">
+    <span class="tg-title">Tampilan</span>
+    <div class="sliders">
+      <label class="sl"><i>Bedah / explode</i>
+        <input type="range" id="explode" min="0" max="100" value="0"><b id="explodeV">0%</b></label>
+      <label class="sl"><i>Transparansi kulit</i>
+        <input type="range" id="xray" min="0" max="100" value="0"><b id="xrayV">0%</b></label>
+      <label class="sl"><i>Potongan (bidang)</i>
+        <input type="range" id="clip" min="0" max="100" value="100"><b id="clipV">off</b></label>
+    </div>
+  </div>
+
+  <div class="tool-group">
+    <span class="tg-title">Opsi</span>
+    <div class="toggles">
+      <button class="tog active" id="togLabels">Label</button>
+      <button class="tog" id="togRotate">Putar otomatis</button>
+      <button class="tog" id="togWire">Wireframe</button>
+      <button class="tog" id="togFlap">Kepakan sayap</button>
+      <button class="tog" id="togGrid">Grid</button>
+      <button class="tog" id="togHemi">Latar terang</button>
+    </div>
+  </div>
+
+  <div class="tool-group narrow">
+    <span class="tg-title">Info</span>
+    <div class="stats" id="stats">
+      <div><i>Poligon</i><b id="stTri">—</b></div>
+      <div><i>Bagian</i><b id="stPart">—</b></div>
+      <div><i>FPS</i><b id="stFps">—</b></div>
+    </div>
+  </div>
+
+</footer>
+
+<!-- ============ MODAL BANTUAN ============ -->
+<div id="modal" class="hidden">
+  <div class="mo-box">
+    <button class="close" id="btnCloseModal">×</button>
+    <h2>Cara pakai</h2>
+    <div class="mo-grid">
+      <div>
+        <h3>Navigasi</h3>
+        <ul>
+          <li><kbd>Drag kiri</kbd> — putar model</li>
+          <li><kbd>Drag kanan</kbd> / <kbd>Shift</kbd>+drag — geser</li>
+          <li><kbd>Scroll</kbd> — zoom</li>
+          <li><kbd>Klik bagian</kbd> — buka keterangan</li>
+          <li><kbd>Klik ganda</kbd> — fokus ke bagian</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Pintasan papan tik</h3>
+        <ul>
+          <li><kbd>1</kbd>–<kbd>9</kbd> — sudut pandang preset</li>
+          <li><kbd>L</kbd> label · <kbd>R</kbd> putar otomatis · <kbd>W</kbd> wireframe</li>
+          <li><kbd>X</kbd> x-ray · <kbd>E</kbd> explode · <kbd>I</kbd> organ dalam</li>
+          <li><kbd>B</kbd> neuropil otak · <kbd>N</kbd> sel saraf</li>
+          <li><kbd>F</kbd> fokus · <kbd>Esc</kbd> reset · <kbd>Tab</kbd> sidebar</li>
+          <li><kbd>P</kbd> simpan gambar PNG</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Tentang model</h3>
+        <p>Seluruh geometri dibangun secara <b>prosedural</b> (tanpa file aset eksternal), mengacu pada morfologi <i>Drosophila melanogaster</i> <b>betina</b> — spesies dan jenis kelamin yang sama dengan sumber konektom FlyWire.</p>
+        <p>Skala: <b>1 satuan dunia = 1&nbsp;mm</b>. Panjang tubuh ±2,5&nbsp;mm, rentang sayap ±5&nbsp;mm, otak ±0,6&nbsp;mm.</p>
+      </div>
+    </div>
+    <div class="mo-note">Model ini untuk keperluan belajar &amp; analisis morfologi. Rincian mikroskopis (sensila, otot, organ) disederhanakan namun ditempatkan sesuai posisi anatomis. Rongga otak sudah diskalakan agar cocok dengan kotak pembatas mesh neuropil <b>FlyWire</b> — lihat <code>docs/flywire.md</code>.</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/textures.js"></script>
+<script src="js/anatomy-data.js"></script>
+<script src="js/fly.js"></script>
+<script src="js/connectome.js"></script>
+<script src="js/neurons.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

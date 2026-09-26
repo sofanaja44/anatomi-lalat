@@ -1,0 +1,11 @@
+# Dependensi untuk alat pengolah data di tools/.
+# Aplikasi web-nya sendiri TIDAK butuh Python — cukup buka index.html.
+#
+#   pip install -r requirements.txt
+
+numpy>=1.24
+trimesh>=4.0          # baca mesh neuropil (.ply/.obj/.stl)
+pyarrow>=14.0         # baca skeleton neuron (.parquet)
+fsspec>=2024.2        # hanya untuk mode streaming (--local-file tidak perlu)
+aiohttp>=3.9          # idem
+requests>=2.31        # idem
