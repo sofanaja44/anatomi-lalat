@@ -1,0 +1,11 @@
+# Normalkan akhiran baris.
+# Penting: skrip shell WAJIB berakhiran LF, kalau tidak gagal jalan di Linux
+# ("bad interpreter: /usr/bin/env bash^M").
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.py        text eol=lf
+Dockerfile  text eol=lf
+
+*.png       binary
+*.json      text eol=lf
