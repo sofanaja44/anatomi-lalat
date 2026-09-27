@@ -46,6 +46,7 @@
   let brainDots = null;   // titik kecerahan seluruh otak, ikut aktivasi BSIM sungguhan
   let neuronsRealDone = false, connDone = false;  // gerbang: keduanya harus "selesai dicoba"
   let flapAmp = 0, haltAmp = 0, yawTarget = 0, legAmp = 0;    // keluaran BSIM -> tubuh, dibaca di animate()
+  let wingPhase = 0, legPhase = 0, flapFreq = 4.2, stepFreqLive = 1.6;   // frekuensi ikut naik-turun dari otak, lihat updateBrainSim
 
   const LBL = $('#labels'), LEAD = $('#leaders'), TIP = $('#tooltip');
   const CANVAS = $('#scene');
@@ -352,11 +353,20 @@
     // otak -> tubuh: kepakan otomatis kalau dorongan motor cukup kuat,
     // wobble halter mengikuti aktivitas keseluruhan (selalu ada sedikit,
     // "hidup" walau lalat sedang tenang), condong/putar dari asimetri kiri-kanan.
+    // TANPA nilai dasar/minimum (dulu haltAmp +0.15, legAmp +0.24) - kalau
+    // otak benar-benar sepi (motor/overall~0), badan benar-benar diam,
+    // bukan goyang dikit terus-menerus seperti sudah "diset". S.flap tetap
+    // dipertahankan sebagai override MANUAL (tombol kepak paksa di UI),
+    // itu memang bukan dari otak dan sengaja begitu.
     flapAmp = Math.max(S.flap ? 1 : 0, Math.min(1, st.motor * 1.4));
-    haltAmp = Math.min(1, 0.15 + st.overall * 2.2);
+    haltAmp = Math.min(1, st.overall * 2.2);
     const asym = st.motorR - st.motorL;
     yawTarget = Math.max(-0.32, Math.min(0.32, asym * 2.6));
-    legAmp = Math.min(1, 0.24 + st.motor * 1.3);   // kaki: baseline kecil selalu ada + naik dari dorongan motor
+    legAmp = Math.min(1, st.motor * 1.3);
+    // frekuensi kepak/langkah ikut naik-turun dari dorongan motor (dulu
+    // tetap 5.2 Hz / 2.4 Hz konstan, cuma amplitudonya dari otak).
+    flapFreq = 4.2 + st.motor * 5.0;
+    stepFreqLive = 1.6 + st.motor * 2.6;
 
     if (brainDots) {
       const col = brainDots.geometry.attributes.color.array;
@@ -1138,9 +1148,12 @@
     // tetap 0 kecuali S.flap manual - perilaku persis seperti sebelumnya.
     const wobbleAmp = Math.max(flapAmp, haltAmp);
     if (wobbleAmp > 0.005) {
-      const f = 5.2;                                    // diperlambat agar terlihat
-      const a = Math.sin(tAcc * Math.PI * 2 * f);
-      const b = Math.sin(tAcc * Math.PI * 2 * f + 1.15);
+      // wingPhase diintegrasi sendiri (bukan tAcc*freq langsung) supaya
+      // flapFreq yang berubah-ubah (ikut dorongan motor otak) tak bikin
+      // lompatan fase yang kelihatan patah-patah.
+      wingPhase += flapFreq * Math.PI * 2 * dt;
+      const a = Math.sin(wingPhase);
+      const b = Math.sin(wingPhase + 1.15);
       if (flapAmp > 0.005) {
         model.wings.forEach(w => {
           const s = w.userData.side;
@@ -1164,10 +1177,9 @@
     // lainnya) - seluruh kaki diayun sebagai batang kaku dari pangkal koksa
     // (lihat pivot di fly.js -> buildLeg()), BUKAN tekuk per-sendi.
     if (BSIM && model.legs) {
-      const stepFreq = 2.4;   // Hz - lebih lambat & "berjalan", bukan secepat kepakan sayap
-      const ph = tAcc * Math.PI * 2 * stepFreq;
+      legPhase += stepFreqLive * Math.PI * 2 * dt;
       model.legs.forEach(leg => {
-        const s = Math.sin(ph + (leg.userData.tripod === 'A' ? 0 : Math.PI));
+        const s = Math.sin(legPhase + (leg.userData.tripod === 'A' ? 0 : Math.PI));
         leg.rotation.y = s * 0.34 * legAmp;
         leg.rotation.z = Math.max(0, s) * 0.15 * legAmp * (leg.userData.side || 1);
       });

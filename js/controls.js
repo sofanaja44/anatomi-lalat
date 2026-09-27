@@ -145,6 +145,13 @@
     this._tRadius = THREE.MathUtils.clamp(this._tRadius * k, this.minDistance, this.maxDistance);
   };
 
+  /** Geser titik yang dikelilingi kamera secara halus (lewat damping yang
+      sama seperti drag), dipakai untuk "mengikuti" objek yang bergerak
+      sendiri (mis. lalat berjalan) tanpa mengganggu rotate/zoom manual. */
+  Orbit.prototype.setTarget = function (x, y, z) {
+    this._tTarget.set(x, y, z);
+  };
+
   /** Animasi halus ke posisi pandang tertentu. */
   Orbit.prototype.flyTo = function (opts) {
     const o = opts || {};
