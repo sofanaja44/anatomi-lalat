@@ -59,6 +59,7 @@
     <button data-view="otak" class="chip">Otak</button>
   </div>
   <div class="tb-right">
+    <a class="chip chip-alive" href="alive.html" title="Halaman ringan: cuma bentuk lalat, otak otonom jalan terus">🧠 Lalat hidup</a>
     <button class="icon-btn" id="btnShot" title="Simpan gambar (P)">⤓</button>
     <button class="icon-btn" id="btnHelp" title="Bantuan (H)">?</button>
   </div>
@@ -85,6 +86,7 @@
   <div class="ins-metrics" id="insMetrics"></div>
   <p class="ins-desc" id="insDesc"></p>
   <div class="ins-facts" id="insFacts"></div>
+  <div class="ins-conn hidden" id="insConn"></div>
   <div class="ins-actions">
     <button id="btnIsolate" class="mini">Isolasi</button>
     <button id="btnFocus" class="mini">Fokus kamera</button>
@@ -132,6 +134,7 @@
       <button class="tog" id="togFlap">Kepakan sayap</button>
       <button class="tog" id="togGrid">Grid</button>
       <button class="tog" id="togHemi">Latar terang</button>
+      <button class="tog active" id="togBrain" title="Simulasi otak otonom (leaky-integrator sederhana) - lihat js/brain-sim.js">Otak hidup</button>
     </div>
   </div>
 
@@ -141,6 +144,7 @@
       <div><i>Poligon</i><b id="stTri">—</b></div>
       <div><i>Bagian</i><b id="stPart">—</b></div>
       <div><i>FPS</i><b id="stFps">—</b></div>
+      <div><i>Otak</i><b id="stBrain">—</b></div>
     </div>
   </div>
 
@@ -168,7 +172,7 @@
           <li><kbd>1</kbd>–<kbd>9</kbd> — sudut pandang preset</li>
           <li><kbd>L</kbd> label · <kbd>R</kbd> putar otomatis · <kbd>W</kbd> wireframe</li>
           <li><kbd>X</kbd> x-ray · <kbd>E</kbd> explode · <kbd>I</kbd> organ dalam</li>
-          <li><kbd>B</kbd> neuropil otak · <kbd>N</kbd> sel saraf</li>
+          <li><kbd>B</kbd> neuropil otak · <kbd>N</kbd> sel saraf · <kbd>O</kbd> otak hidup</li>
           <li><kbd>F</kbd> fokus · <kbd>Esc</kbd> reset · <kbd>Tab</kbd> sidebar</li>
           <li><kbd>P</kbd> simpan gambar PNG</li>
         </ul>
@@ -190,6 +194,8 @@
 <script src="js/fly.js"></script>
 <script src="js/connectome.js"></script>
 <script src="js/neurons.js"></script>
+<script src="js/signal.js"></script>
+<script src="js/brain-sim.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

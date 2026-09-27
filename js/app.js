@@ -21,6 +21,8 @@
     explode: 0,
     xray: 0,
     clip: 100,
+    selNeuron: null,      // root_id neuron individual yang sedang disorot (lapisan "Sel saraf")
+    brainAlive: true,     // simulasi otak otonom (js/brain-sim.js) jalan/berhenti
     layers: {
       exo: true, wing: true, leg: true, seta: true, eye: true,
       internal: false, muscle: false, trachea: false, nerve: false,
@@ -37,6 +39,13 @@
   let byId = {};          // partId -> [objek]
   let labelEls = {};      // partId -> elemen label
   let clock, tAcc = 0, frames = 0, fpsT = 0;
+  let CONN = null;        // data/connections.json, dimuat sekali di buildModel()
+  let neuronHL = null;    // sorotan neuron individual yang sedang dipilih
+  let signalFX = null;    // animasi pulsa sinyal (js/signal.js) untuk neuron terpilih
+  let BSIM = null;        // simulasi otak otonom (js/brain-sim.js), jalan terus di animate()
+  let brainDots = null;   // titik kecerahan seluruh otak, ikut aktivasi BSIM sungguhan
+  let neuronsRealDone = false, connDone = false;  // gerbang: keduanya harus "selesai dicoba"
+  let flapAmp = 0, haltAmp = 0, yawTarget = 0, legAmp = 0;    // keluaran BSIM -> tubuh, dibaca di animate()
 
   const LBL = $('#labels'), LEAD = $('#leaders'), TIP = $('#tooltip');
   const CANVAS = $('#scene');
@@ -206,7 +215,8 @@
     model.neuronSegments = nx.segments;
 
     NEURONS.loadReal('data/neurons.json', function (real) {
-      if (!real) return;
+      neuronsRealDone = true;    // sukses ATAU gagal - keduanya "selesai dicoba"
+      if (!real) { maybeStartBrainSim(); return; }
 
       /* Berkas skematis TIDAK dibuang seluruhnya. Yang sudah ada padanannya
          di data asli diganti; yang tidak ada dipertahankan.
@@ -238,7 +248,29 @@
       console.log('[neuron] skeleton FlyWire dimuat:', real.meta.source || '(tanpa keterangan)',
                   '| berkas skematis dipertahankan:', kept.length
                     ? kept.map(p => p.userData.partId).join(', ') : '(tidak ada)');
+      maybeStartBrainSim();
     });
+
+    // ---- tabel konektivitas (opsional - tools/fetch_connections.py) ----
+    // Ringan (edge list saja, bukan geometri): klik neuron individual di
+    // lapisan "Sel saraf" akan menampilkan mitra pra/pascasinapsnya di sini
+    // kalau berkasnya ada. Juga bahan baku js/brain-sim.js (simulasi otak
+    // otonom). Gagal dengan tenang bila belum dibuat.
+    if (typeof fetch === 'function') {
+      fetch('data/connections.json', { cache: 'no-cache' })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          connDone = true;
+          if (!d || !d.neurons) { maybeStartBrainSim(); return; }
+          CONN = d;
+          console.log('[konektivitas] dimuat:', d.source || '(tanpa keterangan)',
+                      '|', Object.keys(d.neurons).length, 'neuron punya data mitra');
+          maybeStartBrainSim();
+        })
+        .catch(() => { connDone = true; maybeStartBrainSim(); });
+    } else {
+      connDone = true;
+    }
 
     // indeks partId -> objek
     reindex();
@@ -251,6 +283,100 @@
     buildLabels();
 
     $('#stPart').textContent = Object.keys(byId).length;
+  }
+
+  /* ==========================================================
+     SIMULASI OTAK OTONOM (js/brain-sim.js)
+     Dimulai begitu skeleton neuron ASLI + tabel konektivitas SAMA-SAMA
+     selesai dicoba dimuat (sukses ataupun gagal - lihat pemanggil di
+     buildModel()). Kalau salah satu tak tersedia, lalat tetap statis;
+     tak ada error, cuma tak "hidup".
+     ========================================================== */
+  function maybeStartBrainSim() {
+    if (BSIM || !neuronsRealDone || !connDone) return;
+    if (!CONN || typeof BRAINSIM === 'undefined' || typeof NEURONS === 'undefined') return;
+    BSIM = BRAINSIM.build(CONN, NEURONS.locate);
+    if (!BSIM) return;
+    console.log('[otak] simulasi otonom dimulai:', BSIM.neuronCount, 'neuron,',
+               BSIM.edgeCount, 'edge (leaky-integrator sederhana, lihat js/brain-sim.js)');
+    buildBrainDots();
+  }
+
+  const dotSrcIdx = [];   // index titik tampil -> index neuron di BSIM.rawActivations
+
+  /** Satu titik kecerahan per neuron yang disimulasikan, mengikuti aktivasi
+      SUNGGUHAN dari BSIM tiap frame (bukan kosmetik) - bukti visual "otak
+      hidup" di luar gerakan tubuh. */
+  function buildBrainDots() {
+    if (!BSIM || !model.layerRoots.neuron) return;
+    const n = BSIM.neuronCount;
+    const pos = new Float32Array(n * 3);
+    const base = new Float32Array(n * 3);   // warna dasar redup, dicerahkan sesuai aktivasi
+    let usable = 0;
+    for (let i = 0; i < n; i++) {
+      const loc = NEURONS.locate(BSIM.ids[i]);
+      if (!loc) continue;
+      const paths = loc.object.userData.neuronRawPaths && loc.object.userData.neuronRawPaths[loc.index];
+      if (!paths || !paths.length) continue;
+      let longest = paths[0];
+      paths.forEach(p => { if (p.length > longest.length) longest = p; });
+      const p = longest[Math.floor(longest.length / 2)].clone();
+      loc.object.updateMatrixWorld(true);
+      p.applyMatrix4(loc.object.matrixWorld);
+      pos[usable * 3] = p.x; pos[usable * 3 + 1] = p.y; pos[usable * 3 + 2] = p.z;
+      base[usable * 3] = 0.55; base[usable * 3 + 1] = 0.75; base[usable * 3 + 2] = 0.95;   // biru redup bawaan
+      dotSrcIdx[usable] = i;
+      usable++;
+    }
+    if (!usable) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos.subarray(0, usable * 3), 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(usable * 3), 3));
+    const mat = new THREE.PointsMaterial({
+      size: 0.028, vertexColors: true, transparent: true, opacity: 0.85,
+      depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
+    });
+    brainDots = new THREE.Points(g, mat);
+    brainDots.userData.baseColor = base;
+    brainDots.userData.count = usable;
+    model.layerRoots.neuron.add(brainDots);
+  }
+
+  /** Dipanggil tiap frame dari animate(): jalankan satu langkah BSIM, warnai
+      titik otak, dan turunkan tiga sinyal gerak tubuh (flapAmp/haltAmp/yawTarget). */
+  function updateBrainSim(dt) {
+    if (!BSIM || !S.brainAlive) return;
+    BSIM.step(dt);
+    const st = BSIM.state;
+
+    // otak -> tubuh: kepakan otomatis kalau dorongan motor cukup kuat,
+    // wobble halter mengikuti aktivitas keseluruhan (selalu ada sedikit,
+    // "hidup" walau lalat sedang tenang), condong/putar dari asimetri kiri-kanan.
+    flapAmp = Math.max(S.flap ? 1 : 0, Math.min(1, st.motor * 1.4));
+    haltAmp = Math.min(1, 0.15 + st.overall * 2.2);
+    const asym = st.motorR - st.motorL;
+    yawTarget = Math.max(-0.32, Math.min(0.32, asym * 2.6));
+    legAmp = Math.min(1, 0.24 + st.motor * 1.3);   // kaki: baseline kecil selalu ada + naik dari dorongan motor
+
+    if (brainDots) {
+      const col = brainDots.geometry.attributes.color.array;
+      const cnt = brainDots.userData.count;
+      const bcol = brainDots.userData.baseColor;
+      for (let i = 0; i < cnt; i++) {
+        const a = Math.max(0, Math.min(1, Math.tanh(Math.max(0, BSIM.rawActivations[dotSrcIdx[i]]))));
+        col[i * 3] = bcol[i * 3] + a * (1 - bcol[i * 3]);
+        col[i * 3 + 1] = bcol[i * 3 + 1] * (1 - a) + a * 0.55;
+        col[i * 3 + 2] = bcol[i * 3 + 2] * (1 - a) + a * 0.15;   // aktif = kuning-jingga terang
+      }
+      brainDots.geometry.attributes.color.needsUpdate = true;
+      brainDots.visible = model.layerRoots.neuron.visible;
+    }
+
+    if (tAcc - (updateBrainSim._t || 0) > 1) {
+      updateBrainSim._t = tAcc;
+      const el = $('#stBrain');
+      if (el) el.textContent = (st.overall * 100).toFixed(0) + '%';
+    }
   }
 
   function reindex() {
@@ -457,12 +583,16 @@
 
   function clearHL(id) { (byId[id] || []).forEach(o => setHL(o, false)); }
 
-  function select(id, fromUI) {
+  /** `keep`: jangan lepas-pilih walau id sama dengan yang sudah terpilih -
+      dipakai saat mengklik neuron LAIN di dalam berkas serabut yang sama
+      (bundel/partId-nya tetap sama, cuma neuron individualnya berganti). */
+  function select(id, fromUI, keep) {
     if (S.sel && S.sel !== id) clearHL(S.sel);
     if (S.hover) { clearHL(S.hover); S.hover = null; }
 
-    if (!id || S.sel === id) {
+    if (!id || (S.sel === id && !keep)) {
       S.sel = null;
+      clearNeuronHighlight();
       $('#inspector').classList.add('hidden');
       $$('#partList .it').forEach(e => e.classList.remove('sel'));
       $$('.lbl').forEach(e => e.classList.remove('sel'));
@@ -471,6 +601,7 @@
       return;
     }
 
+    if (!keep) clearNeuronHighlight();
     S.sel = id;
     (byId[id] || []).forEach(o => setHL(o, true, 0xffb454));
     applyXray();
@@ -518,6 +649,95 @@
     $('#insDesc').innerHTML = d.ringkas || '';
     $('#insFacts').innerHTML = (d.fakta || []).map(f => '<div class="fct"><div>' + f + '</div></div>').join('');
     $('#btnIsolate').classList.toggle('on', S.isolate);
+  }
+
+  /* ==========================================================
+     NEURON INDIVIDUAL & KONEKTIVITAS
+     Lapisan "Sel saraf" (data FlyWire asli) menggambar banyak neuron
+     sebagai satu berkas gabungan untuk performa. Saat satu ruas diklik,
+     pick() sudah menelusuri balik root_id pemiliknya (js/neurons.js) -
+     di sinilah root_id itu disorot (satu neuron saja) dan mitra sinapsnya
+     (dari tools/fetch_connections.py, kalau ada) ditampilkan.
+     ========================================================== */
+  function clearNeuronHighlight() {
+    if (neuronHL) { scene.remove(neuronHL); neuronHL = null; }
+    if (signalFX) { scene.remove(signalFX.group); signalFX.dispose(); signalFX = null; }
+    S.selNeuron = null;
+    hideConnectivity();
+  }
+
+  function selectNeuron(rid, part) {
+    clearNeuronHighlight();
+    if (!rid || !part) return;
+    const idx = part.userData.neuronIds.indexOf(rid);
+    if (idx < 0) return;
+    S.selNeuron = rid;
+    neuronHL = NEURONS.buildHighlight(part, idx, '#ffffff');
+    if (neuronHL) scene.add(neuronHL);
+    showConnectivity(rid);
+
+    // animasi sinyal: cuma jalan kalau ada data konektivitas DAN mitra
+    // dengan geometri untuk disambungkan (lihat js/signal.js).
+    if (CONN && CONN.neurons && CONN.neurons[rid] && typeof SIGNAL !== 'undefined') {
+      signalFX = SIGNAL.build(part, idx, CONN.neurons[rid], NEURONS.locate, { maxEach: 6 });
+      if (signalFX.lineCount) scene.add(signalFX.group);
+      else { signalFX.dispose(); signalFX = null; }
+    }
+  }
+
+  function hideConnectivity() {
+    const box = $('#insConn');
+    if (box) box.classList.add('hidden');
+  }
+
+  const NT_NAMA = {
+    gaba: 'GABA (penghambat)', ach: 'Asetilkolin (perangsang)',
+    glut: 'Glutamat', oct: 'Oktopamin', ser: 'Serotonin', da: 'Dopamin'
+  };
+
+  function connRow(e) {
+    const label = (CONN.labels && CONN.labels[e.p]) || 'tak diketahui';
+    const nt = NT_NAMA[e.nt] || e.nt || '';
+    const cls = e.g ? 'cr cr-geo' : 'cr';
+    const short = e.p.length > 6 ? '…' + e.p.slice(-6) : e.p;
+    return '<div class="' + cls + '" data-rid="' + e.p + '" title="root_id ' + e.p
+         + (e.g ? ' - klik untuk lompat ke neuron ini' : ' - tak digambar di viewer')
+         + '"><b>' + label + '</b><span>' + e.w + ' sinaps · ' + nt + ' · #' + short + '</span></div>';
+  }
+
+  function showConnectivity(rid) {
+    const box = $('#insConn');
+    if (!box) return;
+    if (!CONN || !CONN.neurons || !CONN.neurons[rid]) {
+      box.classList.remove('hidden');
+      box.innerHTML = '<div class="conn-empty">Belum ada data konektivitas untuk neuron ini.'
+        + ' Jalankan <code>tools/fetch_connections.py</code> untuk mengisinya.</div>';
+      return;
+    }
+    const n = CONN.neurons[rid];
+    const inRows = (n['in'] || []).map(connRow).join('') || '<div class="conn-empty">(tak ada)</div>';
+    const outRows = (n['out'] || []).map(connRow).join('') || '<div class="conn-empty">(tak ada)</div>';
+    box.classList.remove('hidden');
+    box.innerHTML =
+      '<div class="conn-head">' + (n.ct || 'tak diketahui') + ' <i>#' + rid.slice(-8) + '</i></div>' +
+      '<div class="conn-col"><h4>Masuk (presinaps)</h4>' + inRows + '</div>' +
+      '<div class="conn-col"><h4>Keluar (pascasinaps)</h4>' + outRows + '</div>' +
+      '<div class="conn-note">Titik hijau = mitra ikut digambar di viewer, klik untuk lompat. '
+      + 'Pulsa <span class="dot-in">●</span> cyan = sinyal masuk, <span class="dot-out">●</span> amber = '
+      + 'sinyal keluar — ilustratif dari kekuatan sinaps, bukan simulasi biofisika. '
+      + 'Data: FlyWire (' + (CONN.topK || 20) + ' teratas per arah, min ' + (CONN.minSyn || 1) + ' sinaps).</div>';
+    box.onclick = ev => {
+      const row = ev.target.closest('.cr-geo');
+      if (row && row.dataset.rid) jumpToNeuron(row.dataset.rid);
+    };
+  }
+
+  /** Lompat ke neuron lain lewat root_id-nya (dipanggil dari klik di panel konektivitas). */
+  function jumpToNeuron(rid) {
+    const loc = NEURONS.locate(rid);
+    if (!loc) return;
+    select(loc.object.userData.partId, true, true);
+    selectNeuron(rid, loc.object);
   }
 
   function hexA(hex, a) {
@@ -648,10 +868,22 @@
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObject(model.root, true);
     for (let i = 0; i < hits.length; i++) {
-      let o = hits[i].object;
+      const hitObj = hits[i].object;
+      let o = hitObj;
       if (!isVisible(o)) continue;
       while (o && !o.userData.partId) o = o.parent;
-      if (o && o.userData.partId) return { id: o.userData.partId, point: hits[i].point };
+      if (o && o.userData.partId) {
+        const res = { id: o.userData.partId, point: hits[i].point };
+        // berkas neuron FlyWire asli: satu objek = banyak neuron digabung.
+        // hits[i].index dari raycast LineSegments = index vertex awal ruas
+        // (langkah 2 per ruas), jadi vertexIndex/2 = index ruas ke berapa.
+        if (o.userData.layer === 'neuron' && typeof NEURONS !== 'undefined'
+            && o.userData.neuronSegStarts && typeof hits[i].index === 'number') {
+          const rid = NEURONS.neuronAt(o, hits[i].index);
+          if (rid) { res.neuronId = rid; res.neuronPart = o; }
+        }
+        return res;
+      }
     }
     return null;
   }
@@ -765,6 +997,10 @@
     tg($('#togWire'), v => { S.wire = v; applyWire(); });
     tg($('#togFlap'), v => { S.flap = v; if (!v) resetWings(); });
     tg($('#togGrid'), v => { S.grid = v; gridHelper.visible = v; });
+    tg($('#togBrain'), v => {
+      S.brainAlive = v;
+      if (!v) { flapAmp = S.flap ? 1 : 0; haltAmp = 0; yawTarget = 0; if (!S.flap) resetWings(); }
+    });
     tg($('#togHemi'), v => {
       S.light = v;
       backdrop.material.map = TEX.backdrop(v ? '#dfe7ef' : '#1a2029', v ? '#9fb0c2' : '#07090d');
@@ -808,11 +1044,20 @@
     CANVAS.addEventListener('click', ev => {
       if (controls.wasDrag()) return;
       const h = pick(ev);
-      select(h ? h.id : null);
+      if (h && h.neuronId) {
+        select(h.id, false, true);
+        selectNeuron(h.neuronId, h.neuronPart);
+      } else {
+        select(h ? h.id : null);
+      }
     });
     CANVAS.addEventListener('dblclick', ev => {
       const h = pick(ev);
-      if (h) { select(h.id); focusPart(h.id); }
+      if (h) {
+        select(h.id, false, true);
+        if (h.neuronId) selectNeuron(h.neuronId, h.neuronPart);
+        focusPart(h.id);
+      }
     });
 
     // papan tik
@@ -826,6 +1071,7 @@
       if (k === 'w') return $('#togWire').click();
       if (k === 'g') return $('#togGrid').click();
       if (k === 'k') return $('#togFlap').click();
+      if (k === 'o') return $('#togBrain').click();
       if (k === 'p') return $('#btnShot').click();
       if (k === 'h' || k === '?') return $('#btnHelp').click();
       if (k === 'tab') { e.preventDefault(); return $('#btnSidebar').click(); }
@@ -885,20 +1131,49 @@
     const dt = clock.getDelta();
     tAcc += dt;
 
-    if (S.flap) {
+    updateBrainSim(dt);   // otak otonom: isi flapAmp/haltAmp/yawTarget (0 kalau tak aktif)
+
+    // amplitudo kepakan & wobble halter: gabungan toggle manual (S.flap, lewat
+    // flapAmp) DAN dorongan dari simulasi otak. Tanpa BSIM, flapAmp/haltAmp
+    // tetap 0 kecuali S.flap manual - perilaku persis seperti sebelumnya.
+    const wobbleAmp = Math.max(flapAmp, haltAmp);
+    if (wobbleAmp > 0.005) {
       const f = 5.2;                                    // diperlambat agar terlihat
       const a = Math.sin(tAcc * Math.PI * 2 * f);
       const b = Math.sin(tAcc * Math.PI * 2 * f + 1.15);
-      model.wings.forEach(w => {
-        const s = w.userData.side;
-        w.rotation.z = w.userData.baseZ + s * a * 0.80;
-        w.rotation.x = b * 0.26;
-      });
+      if (flapAmp > 0.005) {
+        model.wings.forEach(w => {
+          const s = w.userData.side;
+          w.rotation.z = w.userData.baseZ + s * a * 0.80 * flapAmp;
+          w.rotation.x = b * 0.26 * flapAmp;
+        });
+      }
       model.halteres.forEach(h => {
         // berputar terhadap titik asal tubuh; tanda sisi menjaga ayunan tetap simetris
-        h.rotation.z = -a * 0.30 * (h.userData.side || 1);
+        h.rotation.z = -a * 0.42 * wobbleAmp * (h.userData.side || 1);
       });
     }
+
+    // condong/putar tubuh dari asimetri neuron desenden kiri-kanan - dibatasi
+    // kecil & dihaluskan, jadi bukan putaran liar.
+    if (BSIM) {
+      model.root.rotation.y += (yawTarget - model.root.rotation.y) * Math.min(1, dt * 2.2);
+    }
+
+    // kaki: gaya jalan tripod (3 kaki melangkah bareng, gantian dengan 3
+    // lainnya) - seluruh kaki diayun sebagai batang kaku dari pangkal koksa
+    // (lihat pivot di fly.js -> buildLeg()), BUKAN tekuk per-sendi.
+    if (BSIM && model.legs) {
+      const stepFreq = 2.4;   // Hz - lebih lambat & "berjalan", bukan secepat kepakan sayap
+      const ph = tAcc * Math.PI * 2 * stepFreq;
+      model.legs.forEach(leg => {
+        const s = Math.sin(ph + (leg.userData.tripod === 'A' ? 0 : Math.PI));
+        leg.rotation.y = s * 0.34 * legAmp;
+        leg.rotation.z = Math.max(0, s) * 0.15 * legAmp * (leg.userData.side || 1);
+      });
+    }
+
+    if (signalFX) signalFX.update(tAcc);
 
     controls.update(dt);
     shadowPlane.visible = camera.position.y > FLY.GROUND + 0.05 * K;
@@ -941,7 +1216,11 @@
         //   APP.model.parts.length    APP.select('np-medula')
         window.APP = {
           scene: scene, camera: camera, controls: controls, model: model,
-          goView: goView, select: select, focusPart: focusPart, state: S
+          goView: goView, select: select, focusPart: focusPart, state: S,
+          // uji konektivitas dari konsol tanpa perlu klik piksel yang pas:
+          //   APP.selectNeuron('720575940600322965')
+          selectNeuron: jumpToNeuron, connections: () => CONN,
+          pick: pick, isVisible: isVisible
         };
 
         setTimeout(() => $('#loader').classList.add('done'), 260);

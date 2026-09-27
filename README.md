@@ -34,6 +34,8 @@ skematis.
 | Berkas | Isi |
 |---|---|
 | `index.html` | Kerangka UI: bilah atas, sidebar, inspektur, bilah alat |
+| `alive.html` | Halaman ringan terpisah: cuma bentuk lalat + otak otonom |
+| `js/alive.js` | Bootstrap `alive.html` — tanpa sidebar/geometri neuron |
 | `css/style.css` | Tema gelap, tata letak, komponen |
 | `js/controls.js` | Orbit/pan/zoom sendiri (tanpa `examples/` dari CDN) |
 | `js/textures.js` | Semua tekstur prosedural + peta lingkungan PBR |
@@ -41,11 +43,14 @@ skematis.
 | `js/fly.js` | Konstruktor geometri 3D lengkap |
 | `js/connectome.js` | Lapisan neuropil otak (skematis / mesh FlyWire) |
 | `js/neurons.js` | Lapisan bentuk sel saraf (skematis / skeleton FlyWire) |
+| `js/signal.js` | Animasi pulsa sinyal di sepanjang koneksi neuron terpilih |
+| `js/brain-sim.js` | Simulasi otak otonom (leaky-integrator) → gerak tubuh |
 | `js/app.js` | Scene, pencahayaan, interaksi, label, UI |
 | `tools/get_neuropil_meshes.py` | Unduh 78 mesh neuropil FlyWire (tanpa akun) |
 | `tools/fetch_flywire.py` | Konversi mesh neuropil → `data/neuropil.json` |
 | `tools/fetch_flywire_skeletons.py` | Skeleton dari arsip Zenodo → `data/neurons.json` |
 | `tools/fetch_neurons.py` | Konversi berkas SWC → `data/neurons.json` |
+| `tools/fetch_connections.py` | Tabel edge FlyWire (852 MB) → `data/connections.json` |
 | `tools/pipeline.sh` | Seluruh pipeline data, satu perintah (untuk server) |
 | `docs/flywire.md` | Catatan teknis integrasi konektom |
 | `docs/server.md` | **Menjalankan di server lain** |
@@ -133,6 +138,17 @@ keduanya dan sudah tercermin di model:
 ## Fitur penampil
 
 - Klik bagian mana pun → panel keterangan (nama Indonesia, nama Latin, ukuran, fungsi)
+- **Klik satu neuron individual** (data FlyWire asli) → panel mitra pra/pascasinaps,
+  disorot terpisah dari berkas serabutnya (`tools/fetch_connections.py`)
+- **Animasi pulsa sinyal** di sepanjang koneksi ke mitra yang bergeometri —
+  cyan = masuk, amber = keluar (`js/signal.js`; ilustratif, bukan simulasi biofisika)
+- **Simulasi otak otonom** — aktivasi neuron dihitung sungguhan tiap frame
+  (model laju/*leaky-integrator*) dan menggerakkan sayap, halter, **6 kaki
+  (gaya jalan tripod)** & tubuh
+  lalat sendiri, terus-menerus (`js/brain-sim.js`; toggle "Otak hidup" di
+  bilah bawah; penyederhanaan besar — lihat `docs/flywire.md`). Juga jalan
+  di halaman tersendiri yang jauh lebih ringan — lihat **["Lalat
+  hidup"](#lalat-hidup-alivehtml)** di bawah.
 - Daftar bagian terkelompok + pencarian
 - **Bedah/explode** bertahap, **transparansi kulit (x-ray)**, **bidang potong**
 - 11 lapisan yang bisa dinyalakan/dimatikan
@@ -145,11 +161,44 @@ keduanya dan sudah tercermin di model:
 
 `1`–`9` sudut pandang · `L` label · `R` putar otomatis · `W` wireframe ·
 `X` x-ray · `E` explode · `I` organ dalam · **`B` neuropil otak** ·
-**`N` sel saraf** · `G` grid · `K` kepakan · `F` fokus · `P` simpan PNG ·
-`Esc` reset · `Tab` sidebar
+**`N` sel saraf** · `G` grid · `K` kepakan · **`O` otak hidup/berhenti** ·
+`F` fokus · `P` simpan PNG · `Esc` reset · `Tab` sidebar
 
 Dari konsol browser tersedia pegangan `APP` untuk pengembangan:
-`APP.goView('otak')`, `APP.select('np-medula')`, `APP.model.parts.length`.
+`APP.goView('otak')`, `APP.select('np-medula')`, `APP.model.parts.length`,
+`APP.selectNeuron('720575940...')` (sorot satu neuron + tampilkan panel
+konektivitasnya lewat root_id, tanpa perlu klik piksel yang pas).
+
+---
+
+## Lalat hidup (`alive.html`)
+
+`index.html` untuk **eksplorasi anatomi** (x-ray, bedah, 125 bagian, klik
+apa saja) dan `alive.html` untuk **menonton lalat "hidup"** (simulasi otak
+otonom saja) sengaja dipisah jadi dua halaman — bukan satu halaman dengan
+opsi tampil/sembunyi, supaya:
+
+- **Jauh lebih ringan.** `alive.html` TIDAK PERNAH memuat `data/neurons.json`
+  (79 MB, geometri 2,5 juta ruas garis lapisan "Sel saraf") maupun
+  `js/connectome.js`/`js/neurons.js`/`js/signal.js` sama sekali — simulasi
+  otak cuma butuh tahu neuron ini **termasuk bundel apa** (sensorik/motorik/
+  dst.), bukan bentuk 3D-nya. Dipakai `data/neuron-bundle.json`, peta
+  ringan root_id → id bundel (~75 KB, ditulis otomatis oleh
+  `tools/fetch_flywire_skeletons.py` bersamaan dengan `neurons.json`).
+  Total muatan halaman ini ±5 MB, dibanding puluhan MB di `index.html`
+  begitu lapisan "Sel saraf" dinyalakan.
+- **Cuma bentuk lalatnya.** Organ dalam, otot, saraf, trakea — semua
+  bagian yang dibangun `FLY.build()` tapi bukan bagian luar tubuh —
+  disembunyikan permanen (tak ada UI x-ray/lapisan di halaman ini). Yang
+  tampil cuma eksoskeleton, sayap, tungkai, setae, mata: persis rupa lalat
+  dari luar.
+- **UI minimal**: cuma kamera orbit (berputar pelan sendiri), indikator
+  aktivitas otak, dan tombol jeda/lanjut (`O`) — tak ada sidebar/inspektur/
+  toolbar lapisan.
+
+Otak & gerak tubuhnya (`js/brain-sim.js` + `js/alive.js`) identik dengan
+yang ada di `index.html` — lihat bagian **Simulasi otak otonom** di atas
+dan catatan penyederhanaan lengkap di `docs/flywire.md`.
 
 ---
 

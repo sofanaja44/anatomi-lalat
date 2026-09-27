@@ -332,17 +332,25 @@ def main():
             print('  %-20s (tidak ada dalam potongan ini)' % bid)
             continue
         chosen = b['neurons'][:args.per_bundle]
-        paths = []
+        neurons_out = []
+        bundle_seg = 0
         for rid, brs in chosen:
+            paths = []
             for br in brs:
                 v = to_chassis(br)
                 paths.append([round(float(x), 5) for x in v.reshape(-1)])
-                total_seg += len(v) - 1
+                bundle_seg += len(v) - 1
+            # root_id sebagai STRING - 18 digit, melebihi presisi aman integer
+            # JavaScript (2^53). Dipertahankan agar bisa dipadankan dengan
+            # tabel konektivitas (tools/fetch_connections.py) saat neuron
+            # ini diklik satu per satu di viewer.
+            neurons_out.append({'id': str(rid), 'paths': paths})
+        total_seg += bundle_seg
         out.append({'id': bid, 'nama': b['label'], 'color': b['c0'], 'color2': b['c1'],
-                    'opacity': 0.5, 'label': True, 'paths': paths,
+                    'opacity': 0.5, 'label': True, 'neurons': neurons_out,
                     'neuronCount': len(chosen), 'available': len(b['neurons'])})
         print('  %-20s %4d neuron dipakai (tersedia %d), %s ruas'
-              % (bid, len(chosen), len(b['neurons']), format(sum(len(p) // 3 - 1 for p in paths), ',')))
+              % (bid, len(chosen), len(b['neurons']), format(bundle_seg, ',')))
 
     if tak_dikenal:
         print('  (%d neuron tanpa anotasi dilewati)' % tak_dikenal)
@@ -370,6 +378,19 @@ def main():
           % (len(out), format(total_seg, ','), mb))
     if total_seg > 400_000:
         print('  CATATAN: cukup berat. Turunkan --per-bundle bila terasa tersendat.')
+
+    # Peta ringan root_id -> id bundel, TANPA geometri - dipakai halaman
+    # alive.html (js/alive.js) supaya simulasi otak tak perlu mengunduh
+    # data/neurons.json yang berat (cuma butuh tahu bundel tiap neuron,
+    # bukan bentuknya). Selalu ditulis ulang bersamaan dengan neurons.json
+    # supaya tak pernah basi.
+    bundle_map = {nr['id']: b['id'] for b in out for nr in b['neurons']}
+    bundle_map_path = os.path.join(os.path.dirname(args.out) or '.', 'neuron-bundle.json')
+    with open(bundle_map_path, 'w', encoding='utf-8') as f:
+        json.dump(bundle_map, f, separators=(',', ':'))
+    print('Tertulis %s (%d entri, %.0f KB)'
+          % (bundle_map_path, len(bundle_map), os.path.getsize(bundle_map_path) / 1e3))
+
     print('\nJalankan  node serve.js  lalu centang lapisan "Sel saraf".')
 
 

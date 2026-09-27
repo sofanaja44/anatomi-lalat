@@ -1,0 +1,68 @@
+/* ==========================================================
+   alive.css - khusus halaman alive.html (lalat hidup, simulasi otonom).
+   Memakai token warna yang sama dengan style.css (dimuat sebelum berkas
+   ini), cuma tata letaknya beda: tak ada sidebar/inspector/toolbar,
+   cukup bilah atas tipis + catatan kecil.
+   ========================================================== */
+
+#aliveTop{
+  position:fixed;top:0;left:0;right:0;z-index:20;
+  display:flex;align-items:center;gap:16px;padding:12px 18px;
+  background:linear-gradient(rgba(8,10,14,.82),rgba(8,10,14,0));
+  pointer-events:none;
+}
+#aliveTop > *{pointer-events:auto}
+
+.at-brand{display:flex;flex-direction:column;line-height:1.25}
+.at-brand b{font:800 13px var(--sans);letter-spacing:.04em;color:var(--tx)}
+.at-brand i{font-style:normal;font-size:10.5px;color:var(--tx-faint)}
+
+.at-mid{flex:1;display:flex;justify-content:center}
+.at-meter{
+  display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;
+  background:var(--panel);border:1px solid var(--line);font:11px var(--mono);color:var(--tx-dim);
+}
+.at-meter span{color:var(--tx-faint)}
+.at-meter i{
+  width:70px;height:6px;border-radius:4px;background:rgba(255,255,255,.08);
+  overflow:hidden;display:block;position:relative;font-style:normal;
+}
+.at-meter i b{
+  display:block;height:100%;width:0%;border-radius:4px;
+  background:linear-gradient(90deg,var(--acc-4),#ffb454);
+  transition:width .3s ease;
+}
+.at-meter > b{color:var(--tx);min-width:30px}
+
+.at-right{display:flex;align-items:center;gap:10px}
+.at-right .tog{
+  padding:6px 12px;border-radius:20px;border:1px solid var(--line);
+  background:var(--panel);color:var(--tx-dim);font:11px var(--sans);cursor:pointer;transition:.15s;
+}
+.at-right .tog:hover{border-color:var(--line-2);color:var(--tx)}
+.at-right .tog.active{border-color:var(--acc-4);color:#c9b8ff;background:rgba(167,139,250,.12)}
+.at-link{
+  font:11px var(--sans);color:var(--tx-faint);text-decoration:none;
+  border:1px solid var(--line);padding:6px 12px;border-radius:20px;transition:.15s;
+}
+.at-link:hover{color:var(--tx);border-color:var(--line-2)}
+
+#atNote{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:20;
+  max-width:min(560px,90vw);padding:10px 34px 10px 14px;border-radius:10px;
+  background:var(--panel-solid);border:1px solid var(--line-2);box-shadow:var(--shadow);
+  font-size:11px;line-height:1.55;color:var(--tx-dim);
+}
+#atNote code{font:10px var(--mono);background:rgba(255,255,255,.06);padding:1px 4px;border-radius:4px}
+#atNote[hidden]{display:none}
+#atNoteClose{
+  position:absolute;top:6px;right:8px;background:none;border:0;color:var(--tx-faint);
+  font-size:15px;line-height:1;cursor:pointer;padding:4px;
+}
+#atNoteClose:hover{color:var(--tx)}
+
+@media (max-width: 720px){
+  #aliveTop{flex-wrap:wrap;gap:8px}
+  .at-mid{order:3;flex:1 0 100%;justify-content:flex-start}
+  .at-brand i{display:none}
+}

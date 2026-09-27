@@ -925,7 +925,23 @@
     });
     g.add(reg(br, 'seta-tungkai', { layer: 'seta', explode: ex }));
 
-    return g;
+    // Bungkus seluruh kaki dalam "pivot" di pangkal koksa (P[0]) supaya bisa
+    // diayun sebagai satu batang kaku dari bahu (dipakai js/app.js &
+    // js/alive.js untuk gerak kaki dari simulasi otak) - geometri di atas
+    // TIDAK berubah, cuma dipindah satu level supaya posisi absolutnya
+    // tetap sama persis saat pivot.rotation masih nol. Sendi individual
+    // (lutut dst.) tetap statis; ini bukan rig IK penuh per-sendi.
+    const pivot = new THREE.Group();
+    pivot.name = g.name;
+    pivot.position.copy(P[0]);
+    g.position.copy(P[0]).multiplyScalar(-1);
+    pivot.add(g);
+    pivot.userData.side = side;
+    pivot.userData.legIndex = idx;
+    // gaya jalan tripod serangga: (depan+belakang sisi X) melangkah bareng
+    // dengan (tengah sisi berlawanan) - lihat pemakaiannya di js/app.js.
+    pivot.userData.tripod = ((idx === 1) === (side > 0)) ? 'A' : 'B';
+    return pivot;
   }
 
   /* ==========================================================
@@ -1397,6 +1413,7 @@
       root: root,
       parts: PARTS.slice(),
       wings: [wingR, wingL],
+      legs: gL.children.slice(),   // 6 pivot koksa - lihat buildLeg()
       layerRoots: { muscle: gMus, internal: gInt, nerve: gNer, trachea: gTra },
       ground: GROUND * SPEC.scale,
       ommatidia: OMMATIDIA,

@@ -38,6 +38,41 @@
     });
   }
 
+  /* ---------- pelacakan per-neuron (untuk klik & konektivitas) ----------
+     Satu bundel = satu THREE.LineSegments gabungan (tetap ringan untuk
+     ratusan ribu ruas). Supaya klik bisa tahu neuron MANA yang kena -
+     bukan cuma "bundel mana" - tiap objek menyimpan:
+       userData.neuronIds      : [root_id, ...]           (index neuron -> id)
+       userData.neuronSegStarts: [0, s0, s0+s1, ..., total] (batas ruas kumulatif)
+       userData.neuronRawPaths : [[Vector3,...], ...][]    (untuk gambar sorotan)
+     LOCATE memetakan root_id -> {object, index} lintas semua bundel,
+     dipakai saat mitra sinaps diklik dari panel (lompat ke neuronnya). */
+  const LOCATE = Object.create(null);
+
+  /** Cari index neuron pemilik suatu ruas, dari index vertex hasil raycast. */
+  function neuronAt(object, vertexIndex) {
+    const starts = object.userData.neuronSegStarts;
+    const ids = object.userData.neuronIds;
+    if (!starts || !ids) return null;
+    const seg = vertexIndex / 2;
+    let lo = 0, hi = ids.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= seg) lo = mid; else hi = mid - 1;
+    }
+    return ids[lo] || null;
+  }
+
+  /** Gambar ulang satu neuron saja, warna terang, sebagai sorotan lepas. */
+  function buildHighlight(object, neuronIndex, color) {
+    const raw = object.userData.neuronRawPaths;
+    if (!raw || !raw[neuronIndex]) return null;
+    const hl = bundle(raw[neuronIndex], color || '#ffffff', color || '#ffffff', 1);
+    hl.renderOrder = 10;
+    hl.material.depthTest = false;
+    return hl;
+  }
+
   /** Haluskan daftar titik menjadi kurva. */
   function smooth(pts, n) {
     if (pts.length < 3) return pts;
@@ -63,6 +98,42 @@
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     return new THREE.LineSegments(g, lineMat(opacity));
+  }
+
+  /**
+   * Sama seperti bundle(), tapi menerima [{id, paths}, ...] (satu entri per
+   * neuron asli) dan menandai kepemilikan tiap ruas supaya klik individual
+   * bisa dipetakan kembali ke root_id-nya. Geometri tetap SATU buffer
+   * gabungan - tidak ada beban render tambahan dibanding bundle() biasa.
+   */
+  function bundleNeurons(neuronsArr, c0, c1, opacity) {
+    const pos = [], col = [];
+    const a = new THREE.Color(c0), b = new THREE.Color(c1), t = new THREE.Color();
+    const neuronIds = [], neuronSegStarts = [0], neuronRawPaths = [];
+    let seg = 0;
+    neuronsArr.forEach(nr => {
+      neuronIds.push(nr.id || null);
+      neuronRawPaths.push(nr.paths);
+      nr.paths.forEach(pts => {
+        const n = pts.length;
+        for (let i = 0; i < n - 1; i++) {
+          pos.push(pts[i].x, pts[i].y, pts[i].z, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+          t.copy(a).lerp(b, i / (n - 1)); col.push(t.r, t.g, t.b);
+          t.copy(a).lerp(b, (i + 1) / (n - 1)); col.push(t.r, t.g, t.b);
+          seg++;
+        }
+      });
+      neuronSegStarts.push(seg);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const ls = new THREE.LineSegments(g, lineMat(opacity));
+    ls.userData.neuronIds = neuronIds;
+    ls.userData.neuronSegStarts = neuronSegStarts;
+    ls.userData.neuronRawPaths = neuronRawPaths;
+    neuronIds.forEach((rid, i) => { if (rid) LOCATE[rid] = { object: ls, index: i }; });
+    return ls;
   }
 
   function reg(obj, id, opts) {
@@ -297,11 +368,15 @@
    * Muat skeleton neuron FlyWire (hasil tools/fetch_neurons.py).
    * Gagal dengan tenang bila berkas belum ada.
    *
-   * Format data/neurons.json:
+   * Format data/neurons.json (versi saat ini):
    *   { source, space:"chassis",
    *     bundles:[ { id, nama, color, color2,
-   *                 paths:[ [x,y,z, x,y,z, ...], ... ] } ] }
+   *                 neurons:[ { id:"<root_id string>",
+   *                             paths:[ [x,y,z, x,y,z, ...], ... ] }, ... ] } ] }
    *   Setiap "path" adalah satu cabang neuron: deret titik berurutan.
+   *   (Versi lama tanpa pemisahan per-neuron - bundles[].paths langsung -
+   *   masih didukung sebagai fallback, hanya saja klik individual & panel
+   *   konektivitas tidak akan tersedia untuk berkas selawas itu.)
    */
   function loadReal(url, onDone) {
     if (typeof fetch !== 'function') { onDone(null); return; }
@@ -312,18 +387,31 @@
         if (d.space !== 'chassis') throw new Error('ruang koordinat bukan "chassis"');
 
         PARTS.length = 0;
+        Object.keys(LOCATE).forEach(k => delete LOCATE[k]);
         const root = new THREE.Group();
         root.name = 'neuron-flywire';
         let ruas = 0;
 
+        const flatToPts = flat => {
+          const pts = [];
+          for (let i = 0; i + 2 < flat.length; i += 3) pts.push(V3(flat[i], flat[i + 1], flat[i + 2]));
+          return pts;
+        };
+
         d.bundles.forEach(bd => {
-          const paths = (bd.paths || []).map(flat => {
-            const pts = [];
-            for (let i = 0; i + 2 < flat.length; i += 3) pts.push(V3(flat[i], flat[i + 1], flat[i + 2]));
-            return pts;
-          }).filter(p => p.length > 1);
-          if (!paths.length) return;
-          const ls = bundle(paths, bd.color || '#7ee8e0', bd.color2 || bd.color || '#a78bfa', bd.opacity || 0.6);
+          const c0 = bd.color || '#7ee8e0', c1 = bd.color2 || bd.color || '#a78bfa';
+          let ls;
+          if (Array.isArray(bd.neurons) && bd.neurons.length) {
+            const neuronsArr = bd.neurons.map(nr => ({
+              id: nr.id, paths: (nr.paths || []).map(flatToPts).filter(p => p.length > 1)
+            })).filter(nr => nr.paths.length);
+            if (!neuronsArr.length) return;
+            ls = bundleNeurons(neuronsArr, c0, c1, bd.opacity || 0.6);
+          } else {
+            const paths = (bd.paths || []).map(flatToPts).filter(p => p.length > 1);
+            if (!paths.length) return;
+            ls = bundle(paths, c0, c1, bd.opacity || 0.6);
+          }
           ruas += ls.geometry.attributes.position.count / 2;
           root.add(reg(ls, bd.id, { label: !!bd.label, explode: [0, 1.0, 0.4] }));
         });
@@ -340,5 +428,13 @@
       .catch(() => onDone(null));
   }
 
-  global.NEURONS = { build: build, loadReal: loadReal };
+  global.NEURONS = {
+    build: build, loadReal: loadReal,
+    /** root_id (string) -> individual neuron root_id yang memiliki ruas ke-vertexIndex, atau null. */
+    neuronAt: neuronAt,
+    /** root_id (string) -> {object, index} bila neuron itu punya geometri di viewer, atau undefined. */
+    locate: rid => LOCATE[rid],
+    /** Gambar sorotan lepas untuk satu neuron (dipanggil dari app.js saat diklik). */
+    buildHighlight: buildHighlight
+  };
 })(window);

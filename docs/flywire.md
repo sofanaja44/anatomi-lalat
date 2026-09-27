@@ -254,15 +254,30 @@ bisa, dengan `--bundle <id>`.
       "nama": "Sel Kenyon",
       "color": "#e08a1e", "color2": "#d1401c",   // gradasi pangkal -> ujung
       "opacity": 0.55,
-      "paths": [ [x,y,z, x,y,z, …], … ]          // satu entri = satu ruas cabang
+      "neurons": [                               // satu entri = satu neuron ASLI
+        {
+          "id": "720575940600322965",            // root_id, STRING (18 digit,
+                                                   // melebihi presisi aman Number JS)
+          "paths": [ [x,y,z, x,y,z, …], … ]       // satu entri = satu ruas cabang
+        }
+      ]
     }
   ]
 }
 ```
 
-Digambar sebagai `THREE.LineSegments` — satu geometri gabungan per berkas.
-Ratusan ribu ruas masih ringan; di atas ±400.000 ruas mulai terasa, kurangi
-jumlah neuron atau turunkan `--max-points`.
+Digambar sebagai `THREE.LineSegments` — **satu geometri gabungan per berkas**,
+sama seperti sebelumnya (ratusan ribu ruas masih ringan; di atas ±400.000
+mulai terasa, kurangi jumlah neuron atau turunkan `--max-points`). Yang
+berubah: tiap objek gabungan itu kini menyimpan `userData.neuronIds` dan
+`userData.neuronSegStarts` — peta ruas → neuron pemiliknya — supaya klik satu
+ruas bisa ditelusuri balik ke root_id spesifiknya (`NEURONS.neuronAt()`)
+tanpa memecah geometri jadi banyak objek kecil yang lebih berat di-render.
+
+Format lama (`bundles[].paths` langsung, tanpa pemisahan per-neuron) masih
+didukung sebagai fallback di `loadReal()`, tapi klik individual & panel
+konektivitas tidak akan tersedia untuk berkas selawas itu — buat ulang
+dengan `tools/fetch_flywire_skeletons.py` versi terbaru.
 
 Pemuatnya ada di `js/neurons.js` → `NEURONS.loadReal()`.
 
@@ -288,21 +303,162 @@ berdampingan dengan neuron FlyWire asli di dalam otak. Berkas skematis lain
 
 ## 7. Langkah berikutnya
 
-Sudah selesai: **wilayah neuropil** dan **bentuk sel saraf** (keduanya
-skematis, siap diganti data asli). Yang masih terbuka:
+Sudah selesai: **wilayah neuropil**, **bentuk sel saraf** (keduanya bisa
+diganti data asli), **tabel konektivitas** (klik satu neuron individual di
+lapisan "Sel saraf" → panel mitra pra/pascasinaps), **animasi pulsa sinyal**
+di sepanjang koneksi ke mitra yang bergeometri, dan **simulasi otak otonom**
+(aktivasi neuron benar-benar dihitung tiap frame, menggerakkan sayap/halter/
+tubuh — lalat "hidup" sendiri di latar belakang).
 
-**Tabel konektivitas.**
-Pilih satu neuron, sorot mitra pra/pascasinapsnya. Butuh tabel tepi
-(edge list) terpisah, bukan geometri — ringan, dan bisa dipadukan dengan
-panel keterangan yang sudah ada.
+### Tabel konektivitas (`data/connections.json`)
+
+Sumbernya arsip Zenodo terpisah dari skeleton — **852 MB**, sudah
+teragregasi per pasangan neuron (bukan 9,5 GB data sinapsis mentah):
+
+```bash
+wget -c https://zenodo.org/api/records/10676866/files/proofread_connections_783.feather/content \
+    -O proofread_connections_783.feather
+python tools/fetch_connections.py --local-file proofread_connections_783.feather
+```
+
+**Urutan**: jalankan setelah `fetch_flywire_skeletons.py` (versi yang
+menyimpan root_id per neuron — lihat format `data/neurons.json` di atas),
+karena skrip ini membaca daftar root_id dari situ untuk menyaring 16,8 juta
+edge jadi hanya yang melibatkan neuron yang sudah digambar di viewer.
+
+Keluarannya ringkas (top-K mitra per arah, bawaan 20, minimum 2 sinaps —
+lihat `--top-k`/`--min-syn`), berisi:
+- `neurons[root_id].in` / `.out` — daftar mitra: root_id partner, jumlah
+  sinaps, kode neurotransmitter dominan (`ach`/`gaba`/`glut`/`oct`/`ser`/`da`),
+  dan `g` (1 bila partner itu juga punya geometri di viewer — bisa disorot
+  3D & diklik untuk lompat; 0 kalau hanya teks).
+- `labels` — nama jenis sel untuk SEMUA root_id yang disebut (termasuk
+  partner tanpa geometri), diambil dari tabel anotasi yang sama dengan
+  skeleton.
+
+Karena viewer hanya menggambar sampel (2.000 dari 139.255 neuron — 250 per
+berkas serabut × 8 berkas), sebagian besar mitra sinaps TIDAK akan punya
+geometri untuk disorot — itu normal, panel tetap menampilkan namanya sebagai
+teks. Pemuatnya ada di `js/app.js` (fetch `data/connections.json`, opsional —
+gagal dengan tenang bila belum dibuat) dan klik-per-neuron ada di
+`js/neurons.js` → `NEURONS.neuronAt()` / `NEURONS.locate()`.
+
+### Animasi pulsa sinyal (`js/signal.js`)
+
+Begitu satu neuron individual dipilih, garis lengkung tipis digambar ke tiap
+mitra yang **juga punya geometri** (`g:1`), dengan pulsa bergerak di
+sepanjangnya — cyan untuk sinyal masuk (presinaps → neuron terpilih), amber
+untuk keluar. Kecepatan & kerapatan pulsa mengikuti `syn_count` (kekuatan
+sinaps) dari `data/connections.json`.
+
+**Ini murni ilustratif** — pulsa bergerak berdasarkan urutan waktu animasi
+(`tAcc` di `js/app.js`), BUKAN hasil model biofisika (tidak ada potensial
+membran, ambang tembak, atau tundaan sinaps sungguhan). Tujuannya membantu
+membaca arah "siapa mengirim ke siapa" dari tabel konektivitas yang sudah
+ada, bukan mensimulasikan aktivitas otak. Dibatasi 6 garis per arah
+(`maxEach`) supaya tidak ramai; dibuang otomatis saat neuron di-deselect
+(lihat `clearNeuronHighlight()` di `js/app.js`).
+
+### Simulasi otak otonom (`js/brain-sim.js`)
+
+Jalan di DUA halaman: `index.html` (viewer anatomi lengkap, lihat
+`updateBrainSim()` di `js/app.js`) dan **`alive.html`** — halaman terpisah
+yang sengaja jauh lebih ringan (tak memuat geometri neuron 79 MB sama
+sekali, cuma peta bundel `data/neuron-bundle.json` ~75 KB; badan lalat
+selalu ditampilkan solid, organ/otak tak pernah terlihat — lihat bagian
+"Lalat hidup" di README.md untuk alasannya). Kode otaknya sendiri
+(`js/brain-sim.js`) sama persis di kedua halaman, cuma `locate()`
+mitranya beda: `index.html` mengembalikan objek Three.js sungguhan,
+`alive.html` cukup pembungkus `{userData:{partId}}` dari peta bundel —
+`brain-sim.js` sendiri TIDAK punya dependensi Three.js sama sekali.
+
+Beda dengan animasi pulsa di atas (yang murni kosmetik, mengikuti urutan
+waktu animasi) — ini benar-benar MENGHITUNG aktivitas tiap neuron tiap
+frame, dengan model **"leaky-integrator"** (model laju/*rate model*, bentuk
+paling sederhana dari model neuron dinamis):
+
+```
+da_i/dt = -a_i/τ + Σ_j  tanda(nt_j) · bobot_ij · r_j
+r_j     = tanh(max(0, a_j))            (keluaran/"laju tembak" semu)
+```
+
+Jalan otomatis & terus-menerus (toggle "Otak hidup" di bilah bawah, bisa
+dimatikan) begitu `data/neurons.json` (versi ber-root_id) dan
+`data/connections.json` sama-sama termuat:
+
+1. **Rangsangan spontan** disuntik acak ke neuron bundel penciuman &
+   optik-lain (`nrn-pn-olfaktori`, `nrn-optik-lain`) — pengganti input
+   sensorik sungguhan (mata/antena tak dipindai kamera).
+2. **Dorongan latar (ambient)**: karena cuma 1.978/139.255 neuron ikut
+   disimulasikan, edge yang KEDUA ujungnya sama-sama ada di sampel itu
+   cuma ±800 — terlalu jarang untuk sinyal merambat jauh. Mitra presinaps
+   DI LUAR sampel (`g:0` di `connections.json`) tetap punya bobot sinaps
+   nyata, jadi dijadikan dorongan latar konstan per neuron (`AMBIENT_SCALE`
+   di kode) — mewakili rata-rata sumbangan bagian otak yang tak
+   disimulasikan, BUKAN dinamika sungguhan dari neuron itu (yang tak
+   diketahui aktivasinya).
+
+   Karena KONSTAN, ambient sendirian membuat asimetri kiri-kanan ikut
+   konstan — tubuh cuma condong sekali di awal lalu diam, tak pernah
+   "menoleh". Diperbaiki dengan `DRIFT_L`/`DRIFT_R`: satu nilai hanyut
+   acak per sisi (*random walk* mean-reverting, independen kiri & kanan),
+   ditambahkan ke dorongan latar neuron bersisi itu tiap langkah —
+   meniru bahwa input dari bagian otak yang tak disimulasikan pun di
+   dunia nyata tak benar-benar tetap, berfluktuasi pelan. Ini
+   simplifikasi KOSMETIK di atas simplifikasi (ambient sendiri sudah
+   taksiran) - tujuannya semata supaya tubuh benar-benar terlihat
+   bereaksi dari waktu ke waktu, bukan menetap ke satu pose.
+3. **Keluaran ke tubuh**: aktivitas neuron `nrn-desenden` (jalur
+   otak → tubuh yang sudah ditandai lewat `super_class`) dibaca tiap
+   frame di `js/app.js` → `updateBrainSim()`, menggerakkan kepakan sayap
+   (otomatis, tak perlu toggle manual), wobble halter (selalu ada sedikit
+   — "napas" idle), condong/putar tubuh dari asimetri kiri-kanan (sisi
+   diambil dari teks label `"... (left)"/"... (right)"`), dan **6 kaki**
+   dengan gaya jalan tripod serangga (3 kaki melangkah bareng — depan+
+   belakang satu sisi + tengah sisi berlawanan — gantian dengan 3
+   lainnya).
+
+   Kaki dibangun `fly.js` → `buildLeg()` sebagai mesh statis dari
+   titik-titik tetap (bukan rig sendi bertingkat seperti sayap), jadi
+   digerakkan sebagai **satu batang kaku diayun dari pivot pangkal
+   koksa** — bukan tekuk per-sendi (lutut dst. tetap kaku). Kompromi
+   sengaja: jauh lebih murah dibanding rig IK penuh per-sendi, tetap
+   memberi kesan melangkah yang jelas terlihat. `model.legs` (array 6
+   pivot, `userData.side`/`legIndex`/`tripod`) diekspos dari `FLY.build()`
+   untuk dipakai `js/app.js` & `js/alive.js`.
+4. **Visual bonus**: satu titik kecerahan per neuron simulasi, mengikuti
+   aktivasi SUNGGUHAN (bukan kosmetik) — kuning-jingga = aktif, biru
+   redup = tenang. Dibangun di `buildBrainDots()`.
+
+**PERINGATAN JUJUR — penyederhanaan, bukan akurasi biologis** (dicatat
+lengkap di komentar atas `js/brain-sim.js`):
+- Tanda neurotransmitter (rangsang/hambat) pakai aturan kasar per jenis
+  zat (ACh/dopamin/oktopamin = +, GABA/glutamat = -) — efek sungguhan
+  ditentukan reseptor tujuan, bukan zatnya sendiri.
+- Tundaan sinaps, ambang tembak (*spiking*) sungguhan, dan potensial
+  membran nyata TIDAK dimodelkan.
+- Dorongan latar (poin 2) adalah taksiran, bukan data aktivitas asli dari
+  neuron di luar sampel.
+- Konstanta (τ, `WEIGHT_SCALE`, `AMBIENT_SCALE`, `NOISE_RATE`) dikalibrasi
+  supaya jaringan terlihat "hidup" & stabil (tak meledak/mati) — bukan
+  hasil fitting ke data eksperimen.
+
+Ini **satu langkah** di atas animasi pulsa: aktivasi neuron benar-benar
+dihitung dan diputar balik ke tubuh, tapi masih jauh dari model
+*integrate-and-fire* dengan konstanta terkalibrasi yang dipakai penelitian
+sungguhan atas data FlyWire.
+
+Yang masih terbuka:
 
 **Seluruh 139k neuron.**
-Perlu streaming, LOD, dan pemuatan bertahap. Proyek tersendiri.
+Perlu streaming, LOD, dan pemuatan bertahap. Proyek tersendiri. Akan
+membuat simulasi otak jauh lebih terhubung (tak perlu dorongan latar lagi
+— semua mitra bisa disimulasikan sungguhan).
 
-**Simulasi.**
-Menjalankan sinyal melewati konektom, bukan sekadar menggambarnya. Sudah ada
-penelitian yang melakukannya dengan data FlyWire. Ini bukan "tambah satu
-lapisan lagi" — cara kerjanya berbeda sama sekali dan sebaiknya jadi proyek
-terpisah di atas tabel konektivitas.
+**Simulasi biofisika terkalibrasi.**
+Model *integrate-and-fire* dengan konstanta yang di-fit ke data
+eksperimen sungguhan (potensial membran, ambang tembak, tundaan sinaps
+akurat) — proyek riset tersendiri, jauh lebih besar dari model laju
+sederhana di atas.
 
 Alat Python yang relevan: `caveclient`, `fafbseg`, `navis`, `cloud-volume`.

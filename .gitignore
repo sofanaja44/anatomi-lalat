@@ -3,11 +3,20 @@
 neuropil_ply/
 *.parquet
 *.whl
+*.feather
 
 # Dihasilkan tools/fetch_flywire_skeletons.py. Ukurannya tidak menentu
 # (bisa puluhan MB), jadi tidak ikut di-commit. Tanpa berkas ini lapisan
 # "Sel saraf" otomatis memakai bentuk skematis — aplikasi tetap jalan.
 data/neurons.json
+
+# Turunan dari data/neurons.json (tools/fetch_flywire_skeletons.py &
+# tools/fetch_connections.py) - ikut basi/mismatch kalau neurons.json
+# dibangun ulang dengan --neurons/--per-bundle berbeda, jadi diperlakukan
+# sama: tak ikut di-commit. Tanpa berkas ini panel konektivitas & halaman
+# alive.html tak punya data (gagal dengan tenang, bukan error).
+data/connections.json
+data/neuron-bundle.json
 
 # --- Python ---
 __pycache__/
