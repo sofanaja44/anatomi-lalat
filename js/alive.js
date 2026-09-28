@@ -87,6 +87,36 @@
   const FLY_ALT = 2.4 * K;         // tinggi jelajah waktu terbang
   const STATE_MIN = 1.4, WALK_MAX = 16, FLY_MAX = 11;
 
+  /* ----------------------------------------------------------
+     PERILAKU TAMBAHAN - grooming, tertarik properti, saccade+miring,
+     gerak-gerik idle. Semua kosmetik/heuristik DI ATAS hasil otak (BSIM
+     tak diubah) - sama semangatnya dengan gerak tubuh lain di berkas ini:
+     jujur disederhanakan, bukan model perilaku serangga yang divalidasi.
+     ---------------------------------------------------------- */
+
+  // Grooming: sesekali berhenti sebentar & "cuci muka" pakai kaki depan -
+  // dipicu acak (lebih sering waktu otak/motor sedang sepi, seperti lalat
+  // sungguhan yang membersihkan diri waktu jeda, bukan sambil ngebut).
+  let grooming = false, groomT = 0, groomNextAt = 4 + Math.random() * 6, groomIdleClock = 0;
+  const GROOM_DUR = 1.8;
+
+  // Tertarik properti dunia (buah/daun terdekat) - dorongan arah TAMBAHAN
+  // di atas belokan dari otak, bukan menggantikannya. Bukan simulasi
+  // penciuman sungguhan (tak ada model plume/gradien bau) - cuma heuristik
+  // "condong ke objek menarik terdekat" yang dijaga lemah biar otak tetap
+  // dominan menentukan arah.
+  const ATTRACT_POINTS = [];
+  const ATTRACT_R = 6.0 * K;
+
+  // Saccade: lalat terbang BUKAN belok mulus terus-menerus, tapi lurus
+  // sebentar lalu sentakan cepat ganti arah (khas insekta). heading (dipakai
+  // gerak) cuma di-update PAS sentakan; di antaranya headingAccum tetap
+  // menumpuk keinginan belok dari otak, menunggu sentakan berikutnya.
+  let headingAccum = 0, sacTimer = 0, sacNext = 0.5 + Math.random() * 0.6;
+  let sacActive = false, sacT = 0;
+  const SAC_DUR = 0.14;
+  let lastTurnRate = 0;   // dipakai untuk badan miring (banking) waktu terbang
+
   // Arena tempat lalat jalan-jalan/terbang: lingkaran radius ARENA_R di
   // sekitar pusat (0,0). heading = arah hadap kumulatif (radian, tak
   // dibatasi), diputar pelan oleh asimetri motor kiri/kanan otak +
@@ -95,6 +125,7 @@
   // kerasa sempit buat kombinasi jalan+terbang bebas.
   const ARENA_R = 7.5 * K;
   let heading = TEX.rnd() * Math.PI * 2;
+  headingAccum = heading;   // sinkronkan titik awal saccade (lihat deklarasi headingAccum di atas)
 
   function init() {
     renderer = new THREE.WebGLRenderer({
@@ -339,6 +370,7 @@
     fruit.rotation.y = 0.4;
     world.add(fruit);
     PROP_COLLIDERS.push({ x: fruit.position.x, z: fruit.position.z, r: 0.5 * K });
+    ATTRACT_POINTS.push({ x: fruit.position.x, z: fruit.position.z, w: 1.0 });   // buah - paling menarik
     const fruitRind = new THREE.Mesh(
       new THREE.TorusGeometry(0.5 * K, 0.04 * K, 8, 24),
       new THREE.MeshStandardMaterial({ color: 0xf4d9a8, roughness: 0.7 })
@@ -355,6 +387,9 @@
     world.add(leafMesh(5.6 * K, -2.2 * K, 0.4 * K, 1.7, ['#5a9a38', '#356420']));
     world.add(leafMesh(-1.8 * K, 5.4 * K, 0.5 * K, -0.4, ['#4c8a2e', '#2c5518']));
     world.add(leafMesh(4.4 * K, 4.6 * K, 0.44 * K, 1.0, ['#3f7a26', '#254a15']));
+    // daun cuma sedikit menarik (bukan makanan) - bobot lebih kecil dari buah
+    [[-3.6, 2.8], [1.3, -4.7], [-5.2, -3.1], [5.6, -2.2], [-1.8, 5.4], [4.4, 4.6]]
+      .forEach(([px, pz]) => ATTRACT_POINTS.push({ x: px * K, z: pz * K, w: 0.4 }));
 
     // tetes embun mengilap di atas salah satu daun
     const dew = new THREE.Mesh(
@@ -448,11 +483,28 @@
       flapAmp = Math.max(0.55, Math.min(1, 0.55 + st.motor * 0.9));
       haltAmp = Math.min(1, st.overall * 2.2);   // halter aktif waktu terbang (sensor keseimbangan)
       legAmp = 0;
+      // batalkan grooming kalau tiba-tiba lepas landas di tengah bersih-bersih
+      if (grooming) { grooming = false; groomIdleClock = 0; groomNextAt = 4 + Math.random() * 6; }
     } else {
       // JALAN: sayap benar-benar diam terlipat, kaki yang bergerak.
       flapAmp = 0;
       haltAmp = 0;
       legAmp = Math.min(1, st.motor * 1.3);
+
+      // grooming: sesekali berhenti "cuci muka" - lebih mungkin dipicu
+      // waktu motor lagi rendah (otak sepi -> jeda alami, bukan sambil
+      // ngebut jalan). groomNextAt diundur acak tiap selesai satu bout.
+      if (!grooming) {
+        groomIdleClock += dt * (1.4 - Math.min(1, st.motor * 2));   // lebih cepat "kepingin" waktu tenang
+        if (groomIdleClock > groomNextAt) {
+          grooming = true; groomT = 0; groomIdleClock = 0;
+          legAmp = 0;   // berhenti melangkah selama grooming
+        }
+      } else {
+        groomT += dt;
+        legAmp = 0;
+        if (groomT > GROOM_DUR) { grooming = false; groomNextAt = 5 + Math.random() * 7; }
+      }
     }
     // frekuensi kepak/langkah: ikut naik saat dorongan motor tinggi (fly
     // yang "bersemangat" ngepak/jalan lebih cepat, bukan cuma lebih lebar).
@@ -482,8 +534,53 @@
         const bias = Math.min(1, (distC - ARENA_R * 0.72) / (ARENA_R * 0.4));
         turnRate += diff * bias * 3.0;
       }
+
+      // tertarik ke properti terdekat (buah/daun) - heuristik "condong ke
+      // objek menarik terdekat" LEMAH, bukan simulasi penciuman/plume bau
+      // sungguhan (tak ada model gradien bau). Sengaja dibiarkan lemah
+      // supaya arah tetap didominasi otak, ini cuma bias tambahan.
+      if (!grooming) {
+        let best = null, bestScore = -Infinity, bestDist = 0;
+        for (let i = 0; i < ATTRACT_POINTS.length; i++) {
+          const p = ATTRACT_POINTS[i];
+          const d = Math.hypot(p.x - px, p.z - pz);
+          if (d < ATTRACT_R) {
+            const score = p.w / (0.6 + d);
+            if (score > bestScore) { bestScore = score; best = p; bestDist = d; }
+          }
+        }
+        if (best) {
+          const ang = Math.atan2(best.x - px, best.z - pz);
+          let ad = ang - heading;
+          ad = ((ad + Math.PI) % (Math.PI * 2)) - Math.PI;
+          const strength = Math.min(1, (ATTRACT_R - bestDist) / ATTRACT_R);
+          turnRate += ad * strength * (flying ? 0.7 : 1.1);
+        }
+      }
     }
-    heading += turnRate * dt;
+    lastTurnRate = turnRate;
+
+    if (flying) {
+      // saccade: lalat terbang belok dengan SENTAKAN cepat lalu lurus lagi
+      // (khas insekta), bukan muter mulus terus-menerus. headingAccum terus
+      // menumpuk keinginan belok (dari otak+heuristik di atas); heading
+      // (dipakai gerak sebenarnya) cuma dikejar pas sentakan berlangsung.
+      headingAccum += turnRate * dt;
+      sacTimer += dt;
+      if (!sacActive && sacTimer > sacNext) {
+        sacActive = true; sacT = 0; sacTimer = 0; sacNext = 0.5 + Math.random() * 0.7;
+      }
+      if (sacActive) {
+        sacT += dt;
+        let sd = headingAccum - heading;
+        sd = ((sd + Math.PI) % (Math.PI * 2)) - Math.PI;
+        heading += sd * Math.min(1, dt * 13);
+        if (sacT > SAC_DUR) sacActive = false;
+      }
+    } else {
+      headingAccum = heading;   // waktu jalan tetap belok mulus, reset akumulasi
+      heading += turnRate * dt;
+    }
 
     if (tAcc - (updateBrainSim._t || 0) > 0.5) {
       updateBrainSim._t = tAcc;
@@ -491,7 +588,7 @@
       $('#atBrainPct').textContent = pct + '%';
       $('#atBrainFill').style.width = Math.min(100, pct * 2) + '%';
       const modeEl = $('#atMode');
-      if (modeEl) modeEl.textContent = flying ? '🪽 terbang' : '🦵 jalan';
+      if (modeEl) modeEl.textContent = flying ? '🪽 terbang' : (grooming ? '🧼 bersih-bersih' : '🦵 jalan');
     }
   }
 
@@ -561,7 +658,11 @@
       // memutar badan penuh supaya lalat benar-benar bisa berputar arah.
       let dh = heading - model.root.rotation.y;
       dh = ((dh + Math.PI) % (Math.PI * 2)) - Math.PI;
-      model.root.rotation.y += dh * Math.min(1, dt * (flying ? 3.4 : 2.6));
+      // waktu terbang `heading` sendiri sudah cuma berubah pas sentakan
+      // saccade (lihat updateBrainSim) - jadi badan boleh mengejarnya
+      // cepat di sini, sentakannya sudah "dijadwalkan" di sana, bukan di
+      // kelenturan chase ini.
+      model.root.rotation.y += dh * Math.min(1, dt * (flying ? 11 : 2.6));
 
       // maju sepanjang arah hadap - kecepatan & MODE (jalan pelan di tanah
       // vs terbang lebih cepat di udara) mengikuti otak (legAmp/flapAmp,
@@ -613,21 +714,48 @@
       model.root.position.y = Math.max(0, altBase + kick + (flying ? Math.sin(tAcc * 3.1) * 0.05 * K : 0));
     }
 
+    // badan miring (banking) waktu terbang & belok - seperti pesawat,
+    // bukan cuma berputar datar. Sebanding arah & besar turnRate terakhir
+    // dari otak (lastTurnRate, lihat updateBrainSim), dihaluskan supaya
+    // tak nyentak. Waktu jalan/diam: kembali ~0 + sedikit goyang idle
+    // (lihat bawah) supaya tak berdiri kaku sempurna.
+    const bankTarget = flying ? THREE.MathUtils.clamp(-lastTurnRate * 0.16, -0.5, 0.5) : 0;
+    const idleAmt = flying ? 0 : Math.max(0, 1 - legAmpS - flapAmpS);   // paling kentara waktu benar2 diam
+    const idleZ = idleAmt * (Math.sin(tAcc * 1.4) * 0.02 + Math.sin(tAcc * 3.1 + 1.7) * 0.01);
+    const idleX = idleAmt * (Math.sin(tAcc * 0.9 + 0.6) * 0.018 + Math.sin(tAcc * 2.4) * 0.008);
+    model.root.rotation.z += (bankTarget + idleZ - model.root.rotation.z) * Math.min(1, dt * 3.5);
+    model.root.rotation.x += (idleX - model.root.rotation.x) * Math.min(1, dt * 3.5);
+
     // kaki: gaya jalan tripod waktu di tanah (sama seperti js/app.js), DITARIK
     // rapat ke badan (tuck) waktu terbang - dulu cuma "berhenti" di pose
     // netral (rotasi nol) waktu legAmpS=0, sekarang benar-benar melipat naik
-    // seperti kaki lalat sungguhan waktu melayang.
+    // seperti kaki lalat sungguhan waktu melayang. Waktu grooming: kaki
+    // depan (idx 0) menggosok ke arah kepala, kaki lain diam berdiri.
     if (BSIM && model.legs) {
       legPhase += stepFreqLive * Math.PI * 2 * dt;
       const tuck = flapAmpS;   // 0 = kaki lepas jalan normal, ~1 = ditarik penuh waktu terbang
+      // amplop grooming: menanjak-turun halus di awal/akhir bout, bukan
+      // langsung nyentak ke pose gosok & balik netral.
+      const groomEnv = grooming
+        ? Math.min(1, groomT / 0.3) * Math.min(1, (GROOM_DUR - groomT) / 0.3) : 0;
+      const groomPhase = tAcc * Math.PI * 2 * 4.3;
       // Sudut lipat beda per pasang kaki (depan/tengah/belakang, idx 0-2) -
       // dicari coba-coba lewat screenshot (pivot coxa tiap pasang beda
       // orientasi bawaannya di fly.js, jadi satu angka saja tak cukup
       // untuk melipat SEMUA pasang secara masuk akal ke arah badan).
       const TUCK_X = [-1.1, -0.95, -1.35], TUCK_Y = [-0.55, -0.15, 0.25], TUCK_Z = [0.55, 0, 0];
       model.legs.forEach(leg => {
-        const s = Math.sin(legPhase + (leg.userData.tripod === 'A' ? 0 : Math.PI));
         const idx = leg.userData.legIndex || 0, side = leg.userData.side || 1;
+        if (groomEnv > 0.003 && idx === 0) {
+          // kaki depan: gosok naik-turun ke arah kepala/mata, dua kaki
+          // sedikit berlawanan fase biar tak kaku simetris sempurna.
+          const gp = groomPhase + side * 0.4;
+          leg.rotation.x = -1.05 + Math.sin(gp) * 0.22 * groomEnv;
+          leg.rotation.y = side * (-0.30 + Math.sin(gp * 0.7) * 0.18) * groomEnv;
+          leg.rotation.z = side * 0.35 * groomEnv;
+          return;
+        }
+        const s = Math.sin(legPhase + (leg.userData.tripod === 'A' ? 0 : Math.PI));
         leg.rotation.y = s * 0.34 * legAmpS + TUCK_Y[idx] * side * tuck;
         leg.rotation.z = Math.max(0, s) * 0.15 * legAmpS * side + TUCK_Z[idx] * side * tuck;
         leg.rotation.x = TUCK_X[idx] * tuck;
