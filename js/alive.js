@@ -65,6 +65,24 @@
   // otak (sama semangatnya dengan js/signal.js) - bukan brain-sim.js yang
   // dimodifikasi, cuma dibaca outputnya di sini.
   let mouthPulse = 0, mouthPhase = 0;
+
+  // Antena "twitch" halus - idle wiggle terus-menerus + sentakan kecil ikut
+  // dipicu tembakan sensorik yang sama dengan mouthPulse (lalat mengendus
+  // pakai antena & mulut bareng, wajar dipicu sinyal yang sama).
+  let antPhase = 0;
+
+  // Sentakan kecil waktu lepas landas/mendarat ("menjejak" sesaat, bukan
+  // langsung melayang mulus) - kickT null = tak aktif, kalau angka = waktu
+  // sejak transisi state jalan<->terbang dimulai.
+  let kickT = null;
+  const KICK_DUR = 0.32;
+
+  // Properti dunia yang TAK BOLEH ditembus waktu jalan (lihat buildWorld -
+  // diisi dari posisi/ukuran properti yang sama). Waktu terbang lumayan
+  // tinggi, lalat dianggap terbang DI ATAS-nya (tak dicek) - cuma dicek
+  // waktu di tanah, itu yang paling kentara kalau "tembus" dekorasi.
+  const PROP_COLLIDERS = [];
+  const FLY_BODY_R = 0.30 * K;
   let altBase = 0;                 // tinggi badan saat ini (dihaluskan), 0 = di tanah
   const FLY_ALT = 2.4 * K;         // tinggi jelajah waktu terbang
   const STATE_MIN = 1.4, WALK_MAX = 16, FLY_MAX = 11;
@@ -191,11 +209,14 @@
     model.halteres = model.parts.filter(p => p.userData.partId === 'halter');
     model.labelum = model.parts.filter(p => p.userData.partId === 'labelum');
     model.probosis = model.parts.filter(p => p.userData.partId === 'probosis');
+    model.antennae = model.parts.filter(p =>
+      p.userData.partId === 'antena' || p.userData.partId === 'funikulus' || p.userData.partId === 'arista');
     // simpan pose ISTIRAHAT asli (dibangun fly.js) sebelum dianimasikan -
     // dipakai sebagai titik "lipat penuh"/"diam" yang dituju animate().
     model.wings.forEach(w => { w.userData.baseY = w.rotation.y; w.userData.baseX = w.rotation.x; });
     model.labelum.forEach(l => { l.userData.baseZ = l.rotation.z; });
     model.probosis.forEach(p => { p.userData.baseY = p.position.y; });
+    model.antennae.forEach((p, i) => { p.userData.baseZ = p.rotation.z; p.userData.antIdx = i % 3; });
     showBodyOnly();
   }
 
@@ -317,6 +338,7 @@
     fruit.position.set(4.2 * K, FLY.GROUND, 1.8 * K);
     fruit.rotation.y = 0.4;
     world.add(fruit);
+    PROP_COLLIDERS.push({ x: fruit.position.x, z: fruit.position.z, r: 0.5 * K });
     const fruitRind = new THREE.Mesh(
       new THREE.TorusGeometry(0.5 * K, 0.04 * K, 8, 24),
       new THREE.MeshStandardMaterial({ color: 0xf4d9a8, roughness: 0.7 })
@@ -363,7 +385,10 @@
     // arena yang dijelajahi si lalat.
     [[6.8, -5.8, 0.14], [-7.2, 5.0, 0.17], [6.0, 5.6, 0.12], [-6.2, -5.2, 0.15],
      [11.5, 3.2, 0.2], [-12.8, -6.0, 0.22], [3.5, -12.0, 0.18], [-9.6, 9.8, 0.19]]
-      .forEach(([px, pz, r]) => world.add(pebble(px * K, pz * K, r * K, 0x7d7a72)));
+      .forEach(([px, pz, r]) => {
+        world.add(pebble(px * K, pz * K, r * K, 0x7d7a72));
+        PROP_COLLIDERS.push({ x: px * K, z: pz * K, r: r * K * 1.3 });
+      });
 
     scene.add(world);
   }
@@ -411,9 +436,9 @@
     const burst = st.motor > motorEMA * 1.3 + 0.006;
     const calm = st.motor < motorEMA * 0.75;
     if (!flying && stateTimer > STATE_MIN && (burst || stateTimer > WALK_MAX)) {
-      flying = true; stateTimer = 0;
+      flying = true; stateTimer = 0; kickT = 0;
     } else if (flying && stateTimer > STATE_MIN && (calm || stateTimer > FLY_MAX)) {
-      flying = false; stateTimer = 0;
+      flying = false; stateTimer = 0; kickT = 0;
     }
 
     if (flying) {
@@ -520,6 +545,16 @@
       model.labelum.forEach(l => { l.rotation.z = l.userData.baseZ + md * 0.14 * mp; });
       model.probosis.forEach(p => { p.position.y = p.userData.baseY - Math.max(0, md) * 0.05 * K * mp; });
     }
+
+    // antena: getar halus terus-menerus (idle wiggle - lalat sungguhan
+    // antenanya nyaris tak pernah benar-benar diam) + sentakan tambahan
+    // ikut mouthPulse (mengendus, dipicu tembakan sensorik yang sama).
+    antPhase += dt * 9.5;
+    model.antennae.forEach(p => {
+      const i = p.userData.antIdx;
+      const idle = Math.sin(antPhase * 1.3 + i * 2.1) * 0.045 + Math.sin(antPhase * 2.7 + i) * 0.02;
+      p.rotation.z = p.userData.baseZ + idle * (1 - flapAmpS * 0.6) + Math.sin(mouthPhase * 1.4) * 0.05 * mouthPulse;
+    });
     if (BSIM) {
       // sudut hadap chase `heading` (target tak terbatas, lihat updateBrainSim) -
       // beda dari yawTarget lama yang cuma goyang +-0.32 rad di tempat, ini
@@ -539,6 +574,24 @@
         const speed = flying ? (2.6 + flapAmpS * 3.6) * K : 1.9 * K * legAmpS;
         model.root.position.x += Math.sin(model.root.rotation.y) * speed * dt;
         model.root.position.z += Math.cos(model.root.rotation.y) * speed * dt;
+
+        // tabrakan sederhana dengan properti dunia (buah/kerikil) waktu
+        // JALAN saja - waktu terbang dianggap melintas di atasnya, tak
+        // dicek (lihat deklarasi PROP_COLLIDERS). Dorong keluar + sedikit
+        // belokkan arah biar tak nyangkut mengulang tabrakan yang sama.
+        if (!flying) {
+          for (let i = 0; i < PROP_COLLIDERS.length; i++) {
+            const c = PROP_COLLIDERS[i];
+            const dx = model.root.position.x - c.x, dz = model.root.position.z - c.z;
+            const d = Math.hypot(dx, dz), minD = c.r + FLY_BODY_R;
+            if (d < minD && d > 1e-4) {
+              const push = (minD - d) / d;
+              model.root.position.x += dx * push;
+              model.root.position.z += dz * push;
+              heading += (TEX.rnd() - 0.5) * 0.8;
+            }
+          }
+        }
       }
 
       // tinggi badan: naik ke FLY_ALT waktu terbang, turun ke tanah waktu
@@ -546,16 +599,38 @@
       // udara biar tak kaku menempel pada satu ketinggian.
       const targetAlt = flying ? FLY_ALT : 0;
       altBase += (targetAlt - altBase) * Math.min(1, dt * 1.1);
-      model.root.position.y = altBase + (flying ? Math.sin(tAcc * 3.1) * 0.05 * K : 0);
+
+      // sentakan kecil pas lepas landas/mendarat ("menjejak" sesaat, bukan
+      // langsung melayang/turun mulus begitu saja) - satu lengkungan naik
+      // lalu balik nol dalam KICK_DUR detik, dipicu di updateBrainSim tiap
+      // kali state jalan<->terbang berganti.
+      let kick = 0;
+      if (kickT != null) {
+        kickT += dt;
+        if (kickT > KICK_DUR) kickT = null;
+        else kick = Math.sin((kickT / KICK_DUR) * Math.PI) * 0.10 * K;
+      }
+      model.root.position.y = Math.max(0, altBase + kick + (flying ? Math.sin(tAcc * 3.1) * 0.05 * K : 0));
     }
 
-    // kaki: gaya jalan tripod, sama seperti js/app.js -> lihat komentar di sana.
+    // kaki: gaya jalan tripod waktu di tanah (sama seperti js/app.js), DITARIK
+    // rapat ke badan (tuck) waktu terbang - dulu cuma "berhenti" di pose
+    // netral (rotasi nol) waktu legAmpS=0, sekarang benar-benar melipat naik
+    // seperti kaki lalat sungguhan waktu melayang.
     if (BSIM && model.legs) {
       legPhase += stepFreqLive * Math.PI * 2 * dt;
+      const tuck = flapAmpS;   // 0 = kaki lepas jalan normal, ~1 = ditarik penuh waktu terbang
+      // Sudut lipat beda per pasang kaki (depan/tengah/belakang, idx 0-2) -
+      // dicari coba-coba lewat screenshot (pivot coxa tiap pasang beda
+      // orientasi bawaannya di fly.js, jadi satu angka saja tak cukup
+      // untuk melipat SEMUA pasang secara masuk akal ke arah badan).
+      const TUCK_X = [-1.1, -0.95, -1.35], TUCK_Y = [-0.55, -0.15, 0.25], TUCK_Z = [0.55, 0, 0];
       model.legs.forEach(leg => {
         const s = Math.sin(legPhase + (leg.userData.tripod === 'A' ? 0 : Math.PI));
-        leg.rotation.y = s * 0.34 * legAmpS;
-        leg.rotation.z = Math.max(0, s) * 0.15 * legAmpS * (leg.userData.side || 1);
+        const idx = leg.userData.legIndex || 0, side = leg.userData.side || 1;
+        leg.rotation.y = s * 0.34 * legAmpS + TUCK_Y[idx] * side * tuck;
+        leg.rotation.z = Math.max(0, s) * 0.15 * legAmpS * side + TUCK_Z[idx] * side * tuck;
+        leg.rotation.x = TUCK_X[idx] * tuck;
       });
     }
 
