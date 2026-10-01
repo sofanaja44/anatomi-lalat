@@ -34,8 +34,10 @@ skematis.
 | Berkas | Isi |
 |---|---|
 | `index.html` | Kerangka UI: bilah atas, sidebar, inspektur, bilah alat |
-| `alive.html` | Halaman ringan terpisah: cuma bentuk lalat + otak otonom |
-| `js/alive.js` | Bootstrap `alive.html` — tanpa sidebar/geometri neuron |
+| `alive.html` | Halaman terpisah: lalat yang digerakkan otak FlyWire (model LIF) |
+| `js/alive.js` | Bootstrap `alive.html` — indra → otak → DN → tubuh, tanpa angka acak |
+| `js/lif-brain.js` | Simulator LIF Shiu dkk. 2024 (browser & Node), input teratur |
+| `data/brain-lalat.json` | Potongan otak 972 neuron untuk `alive.html` |
 | `css/style.css` | Tema gelap, tata letak, komponen |
 | `js/controls.js` | Orbit/pan/zoom sendiri (tanpa `examples/` dari CDN) |
 | `js/textures.js` | Semua tekstur prosedural + peta lingkungan PBR |
@@ -44,7 +46,7 @@ skematis.
 | `js/connectome.js` | Lapisan neuropil otak (skematis / mesh FlyWire) |
 | `js/neurons.js` | Lapisan bentuk sel saraf (skematis / skeleton FlyWire) |
 | `js/signal.js` | Animasi pulsa sinyal di sepanjang koneksi neuron terpilih |
-| `js/brain-sim.js` | Simulasi otak otonom (leaky-integrator) → gerak tubuh |
+| `js/brain-sim.js` | Simulasi otak sederhana (leaky-integrator) di `index.html` |
 | `js/app.js` | Scene, pencahayaan, interaksi, label, UI |
 | `tools/get_neuropil_meshes.py` | Unduh 78 mesh neuropil FlyWire (tanpa akun) |
 | `tools/fetch_flywire.py` | Konversi mesh neuropil → `data/neuropil.json` |
@@ -52,7 +54,11 @@ skematis.
 | `tools/fetch_neurons.py` | Konversi berkas SWC → `data/neurons.json` |
 | `tools/fetch_connections.py` | Tabel edge FlyWire (852 MB) → `data/connections.json` |
 | `tools/pipeline.sh` | Seluruh pipeline data, satu perintah (untuk server) |
+| `tools/export_brain783.py` | Konektom utuh v783 (Shiu dkk.) → biner CSR untuk Node |
+| `tools/build_brain_subnet.cjs` | Otak utuh → `data/brain-lalat.json` (+ cek identik) |
+| `tools/brain-node.cjs` | Pemuat otak utuh untuk uji coba di Node |
 | `docs/flywire.md` | Catatan teknis integrasi konektom |
+| `docs/otak-lalat.md` | **Otak di `alive.html`**: model, hasil uji, batasan |
 | `docs/server.md` | **Menjalankan di server lain** |
 | `Dockerfile` | Wadah siap pakai |
 | `serve.js` | Server statis mini untuk pengembangan |
@@ -142,13 +148,12 @@ keduanya dan sudah tercermin di model:
   disorot terpisah dari berkas serabutnya (`tools/fetch_connections.py`)
 - **Animasi pulsa sinyal** di sepanjang koneksi ke mitra yang bergeometri —
   cyan = masuk, amber = keluar (`js/signal.js`; ilustratif, bukan simulasi biofisika)
-- **Simulasi otak otonom** — aktivasi neuron dihitung sungguhan tiap frame
-  (model laju/*leaky-integrator*) dan menggerakkan sayap, halter, **6 kaki
-  (gaya jalan tripod)** & tubuh
-  lalat sendiri, terus-menerus (`js/brain-sim.js`; toggle "Otak hidup" di
-  bilah bawah; penyederhanaan besar — lihat `docs/flywire.md`). Juga jalan
-  di halaman tersendiri yang jauh lebih ringan — lihat **["Lalat
-  hidup"](#lalat-hidup-alivehtml)** di bawah.
+- **Animasi otak ilustratif** — model laju (*leaky-integrator*) pada 1.978
+  neuron sampel dengan **rangsangan acak**, menggerakkan sayap, halter,
+  6 kaki (gaya jalan tripod) & tubuh (`js/brain-sim.js`; toggle "Otak
+  (ilustrasi)" di bilah bawah; lihat `docs/flywire.md`). Ini BUKAN otak
+  FlyWire utuh — lalat yang digerakkan otak sungguhan (model LIF, tanpa
+  angka acak) ada di halaman **["Lalat hidup"](#lalat-hidup-alivehtml)**.
 - Daftar bagian terkelompok + pencarian
 - **Bedah/explode** bertahap, **transparansi kulit (x-ray)**, **bidang potong**
 - 11 lapisan yang bisa dinyalakan/dimatikan
@@ -173,32 +178,34 @@ konektivitasnya lewat root_id, tanpa perlu klik piksel yang pas).
 
 ## Lalat hidup (`alive.html`)
 
-`index.html` untuk **eksplorasi anatomi** (x-ray, bedah, 125 bagian, klik
-apa saja) dan `alive.html` untuk **menonton lalat "hidup"** (simulasi otak
-otonom saja) sengaja dipisah jadi dua halaman — bukan satu halaman dengan
-opsi tampil/sembunyi, supaya:
+`index.html` untuk **eksplorasi anatomi** (x-ray, bedah, 125 bagian, klik apa
+saja). `alive.html` untuk **lalat yang digerakkan otaknya sendiri**.
 
-- **Jauh lebih ringan.** `alive.html` TIDAK PERNAH memuat `data/neurons.json`
-  (79 MB, geometri 2,5 juta ruas garis lapisan "Sel saraf") maupun
-  `js/connectome.js`/`js/neurons.js`/`js/signal.js` sama sekali — simulasi
-  otak cuma butuh tahu neuron ini **termasuk bundel apa** (sensorik/motorik/
-  dst.), bukan bentuk 3D-nya. Dipakai `data/neuron-bundle.json`, peta
-  ringan root_id → id bundel (~75 KB, ditulis otomatis oleh
-  `tools/fetch_flywire_skeletons.py` bersamaan dengan `neurons.json`).
-  Total muatan halaman ini ±5 MB, dibanding puluhan MB di `index.html`
-  begitu lapisan "Sel saraf" dinyalakan.
-- **Cuma bentuk lalatnya.** Organ dalam, otot, saraf, trakea — semua
-  bagian yang dibangun `FLY.build()` tapi bukan bagian luar tubuh —
-  disembunyikan permanen (tak ada UI x-ray/lapisan di halaman ini). Yang
-  tampil cuma eksoskeleton, sayap, tungkai, setae, mata: persis rupa lalat
-  dari luar.
-- **UI minimal**: cuma kamera orbit (berputar pelan sendiri), indikator
-  aktivitas otak, dan tombol jeda/lanjut (`O`) — tak ada sidebar/inspektur/
-  toolbar lapisan.
+Di `alive.html`, **semua gerak lalat dibaca dari simulasi otak FlyWire**
+(model *leaky integrate-and-fire* Shiu dkk., Nature 2024), tanpa angka acak:
 
-Otak & gerak tubuhnya (`js/brain-sim.js` + `js/alive.js`) identik dengan
-yang ada di `index.html` — lihat bagian **Simulasi otak otonom** di atas
-dan catatan penyederhanaan lengkap di `docs/flywire.md`.
+- **Masuk ke otak:** rasa lapar → DNp09 (perintah jalan), dan rasa di mulut.
+  Labelum yang menyentuh tetes gula/pahit atau buah mengaktifkan reseptor
+  rasa.
+- **Keluar dari otak:** oDN1 → kecepatan maju, selisih DNa02/DNa01/DNb02
+  kanan-kiri → belok, MN9 → probosis menjulur dan makan.
+- **Interaksi:** klik tanah untuk menaruh tetes 🍬 gula atau 🟣 pahit. Geser
+  "Lapar" untuk mengubah rasa lapar.
+- **Panel otak** menampilkan laju tembak neuron-neuron itu secara langsung.
+
+Yang terjadi dengan sendirinya dari otak: lalat lapar berjalan berputar
+(belok kanan), berhenti tepat di tetes gula lalu makan sampai habis,
+istirahat setelah kenyang, dan menolak gula yang dicampur pahit.
+
+Lalat **tidak bisa mencium** buah dari jauh, dan tidak terbang atau
+grooming. Di model ini jalur-jalur itu tidak bekerja: bau kiri dan kanan
+tidak terbedakan, dan penciuman memicu aktivitas tak terkendali. Rincian,
+hasil uji, dan cara membangun ulang ada di **[`docs/otak-lalat.md`](docs/otak-lalat.md)**.
+
+Halaman ini tetap ringan: tidak memuat `data/neurons.json` (79 MB). Otaknya
+cuma `data/brain-lalat.json` (379 KB, 972 neuron hasil potongan otak utuh
+yang **identik** hasilnya dengan 138.639 neuron). Organ dalam disembunyikan.
+Hanya rupa luar lalat yang tampil.
 
 ---
 

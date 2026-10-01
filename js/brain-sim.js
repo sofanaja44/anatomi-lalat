@@ -1,4 +1,8 @@
 /* ==========================================================
+   CATATAN: sejak 28-09-2026 hanya dipakai index.html (animasi otak
+   ILUSTRATIF, rangsangan acak). alive.html memakai js/lif-brain.js
+   (model LIF Shiu dkk. 2024, tanpa angka acak) - docs/otak-lalat.md.
+
    brain-sim.js - simulasi aktivitas otak yang SUNGGUHAN DIHITUNG
    (bukan animasi kosmetik seperti js/signal.js), berjalan di atas
    data/connections.json (top-K sinaps per neuron, 1.978 neuron yang

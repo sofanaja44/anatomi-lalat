@@ -359,18 +359,15 @@ ada, bukan mensimulasikan aktivitas otak. Dibatasi 6 garis per arah
 (`maxEach`) supaya tidak ramai; dibuang otomatis saat neuron di-deselect
 (lihat `clearNeuronHighlight()` di `js/app.js`).
 
-### Simulasi otak otonom (`js/brain-sim.js`)
+### Animasi otak ilustratif (`js/brain-sim.js`)
 
-Jalan di DUA halaman: `index.html` (viewer anatomi lengkap, lihat
-`updateBrainSim()` di `js/app.js`) dan **`alive.html`** — halaman terpisah
-yang sengaja jauh lebih ringan (tak memuat geometri neuron 79 MB sama
-sekali, cuma peta bundel `data/neuron-bundle.json` ~75 KB; badan lalat
-selalu ditampilkan solid, organ/otak tak pernah terlihat — lihat bagian
-"Lalat hidup" di README.md untuk alasannya). Kode otaknya sendiri
-(`js/brain-sim.js`) sama persis di kedua halaman, cuma `locate()`
-mitranya beda: `index.html` mengembalikan objek Three.js sungguhan,
-`alive.html` cukup pembungkus `{userData:{partId}}` dari peta bundel —
-`brain-sim.js` sendiri TIDAK punya dependensi Three.js sama sekali.
+Sekarang hanya dipakai `index.html` (viewer anatomi, lihat `updateBrainSim()`
+di `js/app.js`; toggle "Otak (ilustrasi)"). Sejak 28 September 2026
+**`alive.html` tidak lagi memakai berkas ini**: halaman itu digerakkan model
+LIF Shiu dkk. 2024 di atas potongan otak FlyWire v783 tanpa angka acak
+(`js/lif-brain.js`, `data/brain-lalat.json`). Lihat
+**[`docs/otak-lalat.md`](otak-lalat.md)**. `brain-sim.js` sendiri TIDAK punya
+dependensi Three.js sama sekali.
 
 Beda dengan animasi pulsa di atas (yang murni kosmetik, mengikuti urutan
 waktu animasi) — ini benar-benar MENGHITUNG aktivitas tiap neuron tiap
@@ -382,7 +379,7 @@ da_i/dt = -a_i/τ + Σ_j  tanda(nt_j) · bobot_ij · r_j
 r_j     = tanh(max(0, a_j))            (keluaran/"laju tembak" semu)
 ```
 
-Jalan otomatis & terus-menerus (toggle "Otak hidup" di bilah bawah, bisa
+Jalan otomatis & terus-menerus (toggle "Otak (ilustrasi)" di bilah bawah, bisa
 dimatikan) begitu `data/neurons.json` (versi ber-root_id) dan
 `data/connections.json` sama-sama termuat:
 

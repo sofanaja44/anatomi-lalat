@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Lalat Hidup — simulasi otak otonom</title>
+<title>Lalat Hidup — digerakkan otak FlyWire</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/alive.css">
@@ -31,24 +31,70 @@
 <header id="aliveTop">
   <div class="at-brand">
     <b>LALAT HIDUP</b>
-    <i>Simulasi otak otonom · leaky-integrator sederhana</i>
+    <i>Digerakkan otak FlyWire · model LIF Shiu dkk. 2024 · tanpa angka acak</i>
   </div>
   <div class="at-mid">
-    <div class="at-meter" title="Aktivitas otak rata-rata (leaky-integrator, bukan model biofisika)">
-      <span>Otak</span><i id="atBrainBar"><b id="atBrainFill"></b></i><b id="atBrainPct">—</b>
+    <div class="at-tools" role="group" aria-label="Alat">
+      <span>Klik tanah untuk menaruh:</span>
+      <button class="tog active" data-tool="sugar" title="Tetes gula - mengaktifkan reseptor manis labelum">🍬 Gula</button>
+      <button class="tog" data-tool="bitter" title="Tetes pahit - mengaktifkan reseptor pahit labelum">🟣 Pahit</button>
+      <button class="tog" id="toolClear" title="Hapus semua tetes">🧹 Hapus</button>
+      <button class="tog warn" id="toolStartle" title="Jatuhkan ancaman dari atas lalat - memicu giant fiber (GF) kalau cukup dekat & cepat membesar">👋 Kejutkan</button>
     </div>
-    <div class="at-meter" id="atMode" title="Jalan (di tanah, sayap diam) atau terbang (sayap ngepak terus, melayang) - dipicu otak">—</div>
   </div>
   <div class="at-right">
+    <button class="tog" id="brainVizToggle" title="Tampilkan neuron otak sebagai titik bercahaya di kepala (aktivitas nyata, lihat docs/otak-lalat.md)">✨ Otak 3D</button>
+    <button class="tog active" id="panelToggle" title="Tampilkan/sembunyikan panel otak (P)">🧠 Panel</button>
     <button class="tog active" id="atToggle" title="Jeda/lanjutkan simulasi (O)">⏸ Jeda</button>
     <a class="at-link" href="index.html">Jelajahi anatomi lengkap →</a>
   </div>
 </header>
 
+<aside id="brainPanel" aria-label="Otak">
+  <div class="bp-head"><b>OTAK</b><span id="bpStatus">memuat…</span><button id="panelClose" aria-label="Sembunyikan panel" title="Sembunyikan (P)">×</button></div>
+  <div class="bp-row" title="Keadaan tubuh (bukan neuron). Naik pelan, turun saat makan. Menentukan dorongan DNp09.">
+    <span>Lapar</span><i><b id="bpHungerBar" class="warm"></b></i><em id="bpHunger">—</em>
+  </div>
+  <input id="hungerSet" type="range" min="0" max="100" value="70" aria-label="Atur lapar">
+  <div class="bp-sep">masuk ke otak</div>
+  <div class="bp-row" title="DNp09 (P9): perintah jalan. Dirangsang sebanding rasa lapar (Sapkal dkk. 2024).">
+    <span>DNp09 · dorongan</span><i><b id="bpP9Bar"></b></i><em id="bpP9">—</em>
+  </div>
+  <div class="bp-row" title="Reseptor rasa di labelum (mulut) ATAU kaki yang sedang menyentuh sesuatu - tak pernah bareng (lihat docs/otak-lalat.md).">
+    <span>Rasa mulut/kaki</span><em id="bpTaste" class="wide">—</em>
+  </div>
+  <div class="bp-row" title="LC4 + LPLC2: laju & ukuran sudut pandang ancaman yang mendekat (von Reyn &amp; Card dkk. 2019). Hanya aktif saat 'Kejutkan' dipakai.">
+    <span>Looming · visi</span><i><b id="bpLoomBar" class="stop"></b></i><em id="bpLoom">—</em>
+  </div>
+  <div class="bp-sep">keluar dari otak</div>
+  <div class="bp-row" title="oDN1 (DNg97): jalan maju. Dibaca sebagai kecepatan.">
+    <span>oDN1 · maju</span><i><b id="bpODN1Bar"></b></i><em id="bpODN1">—</em>
+  </div>
+  <div class="bp-row" title="DNa02 kiri | kanan: selisihnya = belok (ke sisi yang lebih aktif).">
+    <span>DNa02 · belok</span><i class="split"><u><b id="bpTurnL"></b></u><u><b id="bpTurnR"></b></u></i><em id="bpTurn">—</em>
+  </div>
+  <div class="bp-row" title="FG (foxglove): neuron otak yang menghambat oDN1 saat mengecap gula. Tidak dibaca langsung - efeknya lewat oDN1.">
+    <span>FG · rem</span><i><b id="bpFGBar" class="stop"></b></i><em id="bpFG">—</em>
+  </div>
+  <div class="bp-row" title="MN9: neuron motor probosis. Dibaca sebagai probosis menjulur / makan.">
+    <span>MN9 · mulut</span><i><b id="bpMN9Bar" class="warm"></b></i><em id="bpMN9">—</em>
+  </div>
+  <div class="bp-row" title="GF (DNp01, giant fiber): memicu lompat + lepas landas kabur (von Reyn &amp; Card dkk. 2019).">
+    <span>GF · kabur</span><i><b id="bpGFBar" class="stop"></b></i><em id="bpGF">—</em>
+  </div>
+  <div class="bp-foot">
+    <span><b id="bpSpikes">—</b> spike/dtk</span>
+    <span><b id="bpActive">—</b> dihitung / <b id="bpNeurons">—</b> neuron</span>
+    <span title="Waktu hitung otak dibanding waktu nyata">beban <b id="bpLoad">—</b></span>
+  </div>
+</aside>
+
 <div id="atNote">
-  Ini penyederhanaan besar (bukan simulasi biofisika sungguhan) — lihat
-  <code>docs/flywire.md</code>. Cuma bentuk luar lalat yang ditampilkan;
-  organ/otak sengaja disembunyikan di halaman ini.
+  Semua gerak lalat dibaca dari neuron turun (DN) simulasi otak FlyWire utuh
+  (dipotong ke neuron yang bisa aktif). Masukan: rasa lapar → DNp09, rasa di
+  mulut/kaki, & ancaman mendekat (tombol Kejutkan) → giant fiber. Lalat
+  <b>tidak bisa mencium</b> buah dari jauh di model ini — taruh tetes gula di
+  jalurnya. Lihat <code>docs/otak-lalat.md</code>.
   <button id="atNoteClose" aria-label="Tutup">×</button>
 </div>
 
@@ -57,7 +103,7 @@
 <script src="js/textures.js"></script>
 <script src="js/anatomy-data.js"></script>
 <script src="js/fly.js"></script>
-<script src="js/brain-sim.js"></script>
+<script src="js/lif-brain.js"></script>
 <script src="js/alive.js"></script>
 </body>
 </html>

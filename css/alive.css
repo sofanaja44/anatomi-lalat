@@ -66,3 +66,81 @@
   .at-mid{order:3;flex:1 0 100%;justify-content:flex-start}
   .at-brand i{display:none}
 }
+
+/* ---------- alat: taruh tetes gula / pahit ---------- */
+.at-tools{
+  display:flex;align-items:center;gap:6px;padding:4px 6px 4px 12px;border-radius:22px;
+  background:var(--panel);border:1px solid var(--line);font:11px var(--sans);color:var(--tx-faint);
+}
+.at-tools span{white-space:nowrap}
+@media (max-width: 1180px){ .at-tools span{display:none} }
+.at-tools .tog{
+  padding:5px 11px;border-radius:18px;border:1px solid var(--line);
+  background:transparent;color:var(--tx-dim);font:11px var(--sans);cursor:pointer;transition:.15s;
+}
+.at-tools .tog:hover{border-color:var(--line-2);color:var(--tx)}
+.at-tools .tog.active{border-color:var(--acc-4);color:#c9b8ff;background:rgba(167,139,250,.12)}
+
+/* ---------- panel otak ---------- */
+#brainPanel{
+  position:fixed;top:68px;right:14px;z-index:20;width:264px;
+  padding:10px 12px 9px;border-radius:12px;
+  background:var(--panel-solid);border:1px solid var(--line-2);box-shadow:var(--shadow);
+  font:11px var(--sans);color:var(--tx-dim);
+}
+.bp-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.bp-head b{font:800 11px var(--sans);letter-spacing:.08em;color:var(--tx)}
+.bp-head span{font-size:11px;color:var(--tx)}
+.bp-sep{
+  margin:8px 0 5px;font:9.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--tx-faint);border-top:1px solid var(--line);padding-top:6px;
+}
+.bp-row{display:grid;grid-template-columns:104px 1fr 62px;align-items:center;gap:8px;margin:4px 0}
+.bp-row span{color:var(--tx-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bp-row em{font:10.5px var(--mono);font-style:normal;color:var(--tx);text-align:right;white-space:nowrap}
+.bp-row em.wide{grid-column:2 / 4;text-align:left}
+.bp-row i{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;display:flex;font-style:normal}
+.bp-row i b{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--acc-4),#8fc0f0);transition:width .3s ease}
+.bp-row i b.warm{background:linear-gradient(90deg,#ffb454,#ff7a45)}
+.bp-row i b.stop{background:linear-gradient(90deg,#f06a6a,#ff9f9f)}
+.bp-row i.split{position:relative}
+.bp-row i.split u{width:50%;display:flex;text-decoration:none}
+.bp-row i.split u:first-child{justify-content:flex-end}
+.bp-row i.split u:first-child b{background:linear-gradient(270deg,var(--acc-4),#8fc0f0)}
+.bp-row i.split::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line-2)}
+#hungerSet{width:100%;margin:2px 0 0;accent-color:#ffb454;height:14px}
+.bp-foot{
+  display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:1px solid var(--line);
+  font:10px var(--mono);color:var(--tx-faint);
+}
+.bp-foot b{color:var(--tx-dim);font-weight:600}
+
+@media (max-width: 720px){
+  .at-tools span{display:none}
+  #brainPanel{top:auto;bottom:12px;right:8px;left:8px;width:auto;padding:8px 10px}
+  #brainPanel .bp-sep{margin:5px 0 3px}
+  #atNote{display:none}
+}
+
+/* tombol sembunyikan panel otak */
+#brainPanel[hidden]{display:none}
+.bp-head{gap:8px}
+.bp-head span{margin-left:auto}
+#panelClose{
+  background:none;border:0;color:var(--tx-faint);font-size:15px;line-height:1;
+  cursor:pointer;padding:0 2px;
+}
+#panelClose:hover{color:var(--tx)}
+
+/* tombol "Kejutkan" (menonjol, warna beda dari tombol lain) & "Otak 3D" */
+.at-tools .tog.warn{border-color:rgba(240,106,106,.45);color:#ffb4b4}
+.at-tools .tog.warn:hover{border-color:#f06a6a;color:#fff}
+#brainVizToggle.active{border-color:#8fc0f0;color:#cfe6ff;background:rgba(143,192,240,.14)}
+
+/* makin banyak tombol di bilah atas (5 tombol + tautan) - biarkan MELIPAT
+   ke baris baru di layar sempit, bukan meluber horizontal (lihat juga
+   #aliveTop flex-wrap di media query 720px atas). */
+.at-tools, .at-right{flex-wrap:wrap;row-gap:6px}
+@media (max-width: 900px){
+  .at-right .at-link{display:none}
+}

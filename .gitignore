@@ -13,8 +13,10 @@ data/neurons.json
 # Turunan dari data/neurons.json (tools/fetch_flywire_skeletons.py &
 # tools/fetch_connections.py) - ikut basi/mismatch kalau neurons.json
 # dibangun ulang dengan --neurons/--per-bundle berbeda, jadi diperlakukan
-# sama: tak ikut di-commit. Tanpa berkas ini panel konektivitas & halaman
-# alive.html tak punya data (gagal dengan tenang, bukan error).
+# sama: tak ikut di-commit. Tanpa berkas ini panel konektivitas & animasi
+# otak di index.html tak punya data (gagal dengan tenang, bukan error).
+# (alive.html tidak memakainya - otaknya di data/brain-lalat.json, yang
+# IKUT di-commit karena kecil & dibangun dari sumber lain.)
 data/connections.json
 data/neuron-bundle.json
 

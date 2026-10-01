@@ -339,3 +339,22 @@ kbd{
   #scalebar{display:none}
   #axisgizmo{display:none}
 }
+
+/* BUG (ditemukan 30-09-2026): #topbar tingginya TETAP 52px & align-items:
+   center, sedangkan .brand (judul dua baris) di layar sempit BISA lebih
+   tinggi dari itu (judul "ANATOMI LALAT BUAH" melebar 2 baris) - karena
+   overflow tak dibatasi, baris atasnya tergeser ke atas y=0 dan
+   TERPOTONG HABIS oleh tepi viewport (bukan cuma disembunyikan rapi).
+   Perbaikan: judul TAK PERNAH melipat (nowrap+ellipsis, aman kalau tetap
+   kepanjangan) & subjudul disembunyikan biar muat 1 baris di tinggi tetap. */
+@media (max-width:640px){
+  .brand{min-width:0}   /* flex child default min-width:auto mencegah ellipsis bekerja */
+  .brand b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}
+  .brand i{display:none}
+  /* .tb-right (unduh/bantuan) bisa tergeser sedikit di luar layar begitu
+     .brand + chip "Lalat hidup" + tb-mid memakai sisa ruang - perketat
+     jarak antar tombol supaya ikut muat. */
+  #topbar{gap:8px;padding:0 8px}
+  .tb-left,.tb-right{gap:4px}
+  .chip-alive{padding-left:8px;padding-right:8px}
+}
